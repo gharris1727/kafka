@@ -341,6 +341,33 @@ public class PluginsTest {
         assertPluginClassLoaderAlwaysActive(samples);
     }
 
+    @Test
+    public void shouldHaveSubclassAvaliable() {
+        TestPlugins.assertAvailable();
+        Converter plugin = plugins.newPlugin(
+            TestPlugins.SUBCLASS_INSTANCE,
+            new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
+            Converter.class
+        );
+        assertInstanceOf(SamplingTestPlugin.class, plugin, "Cannot collect samples");
+        Map<String, SamplingTestPlugin> samples = ((SamplingTestPlugin) plugin).flatten();
+        assertPluginClassLoaderAlwaysActive(samples);
+    }
+
+    @Test
+    public void shouldLoadSubclassCrossPlugin() {
+        TestPlugins.assertAvailable();
+        Converter plugin = plugins.newPlugin(
+            TestPlugins.SUBCLASS_CONFIG,
+            new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
+            Converter.class
+        );
+        assertInstanceOf(SamplingTestPlugin.class, plugin, "Cannot collect samples");
+        Map<String, SamplingTestPlugin> samples = ((SamplingTestPlugin) plugin).flatten();
+        assertPluginClassLoaderAlwaysActive(samples);
+
+    }
+
     public static void assertPluginClassLoaderAlwaysActive(Map<String, SamplingTestPlugin> samples) {
         for (Entry<String, SamplingTestPlugin> e : samples.entrySet()) {
             String sampleName = "\"" + e.getKey() + "\" (" + e.getValue() + ")";

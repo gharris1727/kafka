@@ -98,6 +98,15 @@ public class TestPlugins {
      * to load internal classes, and samples information about their initialization.
      */
     public static final String SERVICE_LOADER = "test.plugins.ServiceLoaderPlugin";
+    /**
+     * Class name of a subclass which only exists in one plugin
+     */
+    public static final String SUBCLASS_INSTANCE = "test.plugins.Subclass";
+    /**
+     * Class name of a plugin which has a superclass definition and refers to an unpackaged subclass
+     * via configdef.
+     */
+    public static final String SUBCLASS_CONFIG = "test.plugins.SuperclassOnlyPlugin";
 
     private static final Logger log = LoggerFactory.getLogger(TestPlugins.class);
     private static final Map<String, File> PLUGIN_JARS;
@@ -114,6 +123,8 @@ public class TestPlugins {
             pluginJars.put(SAMPLING_HEADER_CONVERTER, createPluginJar("sampling-header-converter"));
             pluginJars.put(SAMPLING_CONFIG_PROVIDER, createPluginJar("sampling-config-provider"));
             pluginJars.put(SERVICE_LOADER, createPluginJar("service-loader"));
+            pluginJars.put(SUBCLASS_CONFIG, createPluginJar("superclass"));
+            pluginJars.put(SUBCLASS_INSTANCE, createPluginJar("subclass"));
         } catch (Throwable e) {
             log.error("Could not set up plugin test jars", e);
             err = e;
