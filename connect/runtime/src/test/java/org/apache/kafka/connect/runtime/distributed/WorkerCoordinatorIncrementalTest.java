@@ -81,6 +81,7 @@ public class WorkerCoordinatorIncrementalTest {
     private ConnectorTaskId taskId2x0 = new ConnectorTaskId(connectorId2, 0);
     private ConnectorTaskId taskId3x0 = new ConnectorTaskId(connectorId3, 0);
 
+    private LogContext loggerFactory;
     private String groupId = "test-group";
     private int sessionTimeoutMs = 10;
     private int rebalanceTimeoutMs = 60;
@@ -131,7 +132,7 @@ public class WorkerCoordinatorIncrementalTest {
 
     @Before
     public void setup() {
-        LogContext loggerFactory = new LogContext();
+        loggerFactory = new LogContext();
 
         this.time = new MockTime();
         this.metadata = new Metadata(0, Long.MAX_VALUE, loggerFactory, new ClusterResourceListeners());
@@ -531,6 +532,119 @@ public class WorkerCoordinatorIncrementalTest {
                 anotherMemberAssignment);
 
         verify(configStorage, times(configStorageCalls)).snapshot();
+    }
+
+    @Test
+    public void testZombieLeader() {
+        when(configStorage.snapshot()).thenReturn(configState1);
+
+        // First assignment distributes configured connectors and tasks
+        coordinator.metadata();
+        ++configStorageCalls;
+
+        List<JoinGroupResponseMember> responseMembers = new ArrayList<>();
+        addJoinGroupResponseMember(responseMembers, leaderId, offset, null);
+        addJoinGroupResponseMember(responseMembers, memberId, offset, null);
+        addJoinGroupResponseMember(responseMembers, anotherMemberId, offset, null);
+
+        Map<String, ByteBuffer> result = coordinator.performAssignment(leaderId, compatibility.protocol(), responseMembers);
+
+        ExtendedAssignment leaderAssignment = deserializeAssignment(result, leaderId);
+        assertAssignment(leaderId, offset,
+            Collections.singletonList(connectorId1), 3,
+            Collections.emptyList(), 0,
+            leaderAssignment);
+
+        ExtendedAssignment memberAssignment = deserializeAssignment(result, memberId);
+        assertAssignment(leaderId, offset,
+            Collections.singletonList(connectorId2), 3,
+            Collections.emptyList(), 0,
+            memberAssignment);
+
+        ExtendedAssignment anotherMemberAssignment = deserializeAssignment(result, anotherMemberId);
+        assertAssignment(leaderId, offset,
+            Collections.emptyList(), 2,
+            Collections.emptyList(), 0,
+            anotherMemberAssignment);
+
+        // Second rebalance detects a worker is missing
+        coordinator.metadata();
+        ++configStorageCalls;
+
+        responseMembers = new ArrayList<>();
+        addJoinGroupResponseMember(responseMembers, leaderId, offset, leaderAssignment);
+        addJoinGroupResponseMember(responseMembers, memberId, offset, memberAssignment);
+
+        result = coordinator.performAssignment(leaderId, compatibility.protocol(), responseMembers);
+
+        leaderAssignment = deserializeAssignment(result, leaderId);
+        assertAssignment(leaderId, offset,
+            Collections.emptyList(), 0,
+            Collections.emptyList(), 0,
+            rebalanceDelay,
+            leaderAssignment);
+
+        memberAssignment = deserializeAssignment(result, memberId);
+        assertAssignment(leaderId, offset,
+            Collections.emptyList(), 0,
+            Collections.emptyList(), 0,
+            rebalanceDelay,
+            memberAssignment);
+
+        rebalanceDelay /= 2;
+        time.sleep(rebalanceDelay);
+
+        // A third rebalance before the delay expires won't change the assignments even if the
+        // member returns in the meantime
+        addJoinGroupResponseMember(responseMembers, anotherMemberId, offset, null);
+        result = coordinator.performAssignment(leaderId, compatibility.protocol(), responseMembers);
+
+        leaderAssignment = deserializeAssignment(result, leaderId);
+        assertAssignment(leaderId, offset,
+            Collections.emptyList(), 0,
+            Collections.emptyList(), 0,
+            rebalanceDelay,
+            leaderAssignment);
+
+        memberAssignment = deserializeAssignment(result, memberId);
+        assertAssignment(leaderId, offset,
+            Collections.emptyList(), 0,
+            Collections.emptyList(), 0,
+            rebalanceDelay,
+            memberAssignment);
+
+        anotherMemberAssignment = deserializeAssignment(result, anotherMemberId);
+        assertAssignment(leaderId, offset,
+            Collections.emptyList(), 0,
+            Collections.emptyList(), 0,
+            rebalanceDelay,
+            anotherMemberAssignment);
+
+        time.sleep(rebalanceDelay + 1);
+
+        result = coordinator.performAssignment(leaderId, compatibility.protocol(), responseMembers);
+
+        // A rebalance after the delay expires re-assigns the lost tasks to the returning member
+        leaderAssignment = deserializeAssignment(result, leaderId);
+        assertAssignment(leaderId, offset,
+            Collections.emptyList(), 0,
+            Collections.emptyList(), 0,
+            leaderAssignment);
+
+        memberAssignment = deserializeAssignment(result, memberId);
+        assertAssignment(leaderId, offset,
+            Collections.emptyList(), 0,
+            Collections.emptyList(), 0,
+            memberAssignment);
+
+        anotherMemberAssignment = deserializeAssignment(result, anotherMemberId);
+        assertAssignment(leaderId, offset,
+            Collections.emptyList(), 2,
+            Collections.emptyList(), 0,
+            anotherMemberAssignment);
+
+        verify(configStorage, times(configStorageCalls)).snapshot();
+
     }
 
     private static class MockRebalanceListener implements WorkerRebalanceListener {
