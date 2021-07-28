@@ -16,7 +16,9 @@
  */
 package org.apache.kafka.connect.runtime.distributed;
 
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.KafkaFuture;
@@ -215,6 +217,8 @@ public class DistributedHerderTest extends ThreadedTest {
     @Mock private Plugins plugins;
     @Mock private PluginClassLoader pluginLoader;
     @Mock private DelegatingClassLoader delegatingLoader;
+    // Barrier to allow the test thread to synchronize and wait for the herder tick thread to become idle before continuing
+    private CyclicBarrier herderIdle = new CyclicBarrier(2);
     private CountDownLatch shutdownCalled = new CountDownLatch(1);
 
     private ConfigBackingStore.UpdateListener configUpdateListener;
@@ -2777,6 +2781,7 @@ public class DistributedHerderTest extends ThreadedTest {
         KafkaFuture<Void> herderFencingFuture = EasyMock.mock(KafkaFuture.class);
 
         // Immediately invoke callbacks that the herder sets up for when the worker fencing and writes to the config topic have completed
+      /*
         for (int i = 0; i < 2; i++) {
             Capture<KafkaFuture.BiConsumer<Void, Throwable>> herderFencingCallback = EasyMock.newCapture();
             EasyMock.expect(herderFencingFuture.whenComplete(EasyMock.capture(herderFencingCallback))).andAnswer(() -> {
@@ -2785,13 +2790,19 @@ public class DistributedHerderTest extends ThreadedTest {
             });
         }
 
-        Capture<KafkaFuture.BaseFunction<Void, Void>> fencingFollowup = EasyMock.newCapture();
-        EasyMock.expect(workerFencingFuture.thenApply(EasyMock.capture(fencingFollowup))).andAnswer(() -> {
-            fencingFollowup.getValue().apply(null);
+       */
+
+        Capture<KafkaFuture.BiConsumer<Void, Throwable>> fencingCallback = EasyMock.newCapture();
+        EasyMock.expect(workerFencingFuture.whenComplete(EasyMock.capture(fencingCallback))).andAnswer(() -> {
+            fencingCallback.getValue().accept(null, null);
             return herderFencingFuture;
         });
         EasyMock.expect(worker.fenceZombies(EasyMock.eq(CONN1), EasyMock.eq(2), EasyMock.eq(CONN1_CONFIG)))
             .andReturn(workerFencingFuture);
+
+        // Perform one additional async action on the tick thread to follow the fencing
+        member.wakeup();
+        EasyMock.expectLastCall();
 
         expectConfigRefreshAndSnapshot(configState);
 
@@ -2802,17 +2813,18 @@ public class DistributedHerderTest extends ThreadedTest {
 
         PowerMock.replayAll(workerFencingFuture, herderFencingFuture);
 
-
         startBackgroundHerder();
 
         FutureCallback<Void> fencing = new FutureCallback<>();
         herder.fenceZombies(CONN1, fencing);
 
-        fencing.get(10, TimeUnit.SECONDS);
+        try {
+            fencing.get(10, TimeUnit.SECONDS);
+        } finally {
+            stopBackgroundHerder();
 
-        stopBackgroundHerder();
-
-        PowerMock.verifyAll();
+            PowerMock.verifyAll();
+        }
     }
 
     /**
@@ -2902,9 +2914,10 @@ public class DistributedHerderTest extends ThreadedTest {
         EasyMock.expect(worker.fenceZombies(EasyMock.eq(CONN1), EasyMock.eq(2), EasyMock.eq(CONN1_CONFIG)))
             .andReturn(workerFencingFuture);
 
-        EasyMock.expect(workerFencingFuture.thenApply(EasyMock.<KafkaFuture.BaseFunction<Void, Void>>anyObject()))
+        EasyMock.expect(workerFencingFuture.whenComplete(EasyMock.<KafkaFuture.BiConsumer<Void, Throwable>>anyObject()))
             .andReturn(herderFencingFuture);
 
+        /*
         CountDownLatch callbacksInstalled = new CountDownLatch(2);
         for (int i = 0; i < 2; i++) {
             EasyMock.expect(herderFencingFuture.whenComplete(EasyMock.capture(herderFencingCallbacks))).andAnswer(() -> {
@@ -2912,6 +2925,7 @@ public class DistributedHerderTest extends ThreadedTest {
                 return null;
             });
         }
+        */
 
         expectHerderShutdown(true);
 
@@ -2923,17 +2937,23 @@ public class DistributedHerderTest extends ThreadedTest {
         FutureCallback<Void> fencing = new FutureCallback<>();
         herder.fenceZombies(CONN1, fencing);
 
-        assertTrue(callbacksInstalled.await(10, TimeUnit.SECONDS));
+        //assertTrue(callbacksInstalled.await(10, TimeUnit.SECONDS));
 
         Exception fencingException = new AuthorizationException("you didn't say the magic word");
         herderFencingCallbacks.getValues().forEach(cb -> cb.accept(null, fencingException));
 
-        ExecutionException exception = assertThrows(ExecutionException.class, () -> fencing.get(10, TimeUnit.SECONDS));
-        assertTrue(exception.getCause() instanceof ConnectException);
+        try {
+            ExecutionException exception = assertThrows(ExecutionException.class,
+                () -> fencing.get(10, TimeUnit.SECONDS));
+            if (exception.getCause() instanceof AssertionError) {
+                throw exception;
+            }
+            assertTrue(exception.getCause() instanceof ConnectException);
+        } finally {
+            stopBackgroundHerder();
 
-        stopBackgroundHerder();
-
-        PowerMock.verifyAll();
+            PowerMock.verifyAll();
+        }
     }
 
     /**
@@ -2991,7 +3011,7 @@ public class DistributedHerderTest extends ThreadedTest {
         Map<String, Capture<KafkaFuture.BiConsumer<Void, Throwable>>> herderFencingCallbacks = new HashMap<>();
         // The callbacks that the herder has installed for after a successful round of zombie fencing, but before writing
         // a task record to the config topic
-        Map<String, Capture<KafkaFuture.BaseFunction<Void, Void>>> workerFencingFollowups = new HashMap<>();
+        Map<String, Capture<KafkaFuture.BiConsumer<Void, Throwable>>> workerFencingFollowups = new HashMap<>();
 
         Map<String, CountDownLatch> callbacksInstalled = new HashMap<>();
         tasksPerConnector.forEach((connector, numStackedRequests) -> {
@@ -3009,11 +3029,11 @@ public class DistributedHerderTest extends ThreadedTest {
                 .andReturn(null)
                 .times(numStackedRequests + 1);
 
-            Capture<KafkaFuture.BaseFunction<Void, Void>> fencingFollowup = EasyMock.newCapture();
+            Capture<KafkaFuture.BiConsumer<Void, Throwable>> fencingFollowup = EasyMock.newCapture();
             CountDownLatch callbackInstalled = new CountDownLatch(1);
             workerFencingFollowups.put(connector, fencingFollowup);
             callbacksInstalled.put(connector, callbackInstalled);
-            EasyMock.expect(workerFencingFuture.thenApply(EasyMock.capture(fencingFollowup))).andAnswer(() -> {
+            EasyMock.expect(workerFencingFuture.whenComplete(EasyMock.capture(fencingFollowup))).andAnswer(() -> {
                 callbackInstalled.countDown();
                 return herderFencingFuture;
             });
@@ -3055,10 +3075,10 @@ public class DistributedHerderTest extends ThreadedTest {
             stackedFencingRequests.addAll(connectorFencingRequests);
         });
 
+        waitForHerderIdle(1, TimeUnit.SECONDS);
         callbacksInstalled.forEach((connector, latch) -> {
             try {
-                assertTrue(latch.await(10, TimeUnit.SECONDS));
-                workerFencingFollowups.get(connector).getValue().apply(null);
+                workerFencingFollowups.get(connector).getValue().accept(null, null);
                 herderFencingCallbacks.get(connector).getValues().forEach(cb -> cb.accept(null, null));
             } catch (InterruptedException e) {
                 fail("Unexpectedly interrupted");
@@ -3320,8 +3340,22 @@ public class DistributedHerderTest extends ThreadedTest {
     private void expectAnyTicks() {
         member.ensureActive();
         EasyMock.expectLastCall().anyTimes();
-        member.poll(EasyMock.anyInt());
-        PowerMock.expectLastCall().anyTimes();
+        Capture<Integer> pollMsCapture = newCapture(CaptureType.LAST);
+        member.poll(EasyMock.captureInt(pollMsCapture));
+        PowerMock.expectLastCall().anyTimes().andStubAnswer(() -> {
+            if (pollMsCapture.getValue() == Integer.MAX_VALUE) {
+                herderIdle.await();
+            }
+            return null;
+        });
+    }
+
+    private void waitForHerderIdle(long timeout, TimeUnit unit) {
+        try {
+            herderIdle.await(timeout, unit);
+        } catch (InterruptedException | BrokenBarrierException | TimeoutException e) {
+            fail("herder did not become idle");
+        }
     }
 
     private SessionKey expectNewSessionKey() {
@@ -3354,6 +3388,7 @@ public class DistributedHerderTest extends ThreadedTest {
     }
 
     private void stopBackgroundHerder() throws Exception {
+        waitForHerderIdle(10, TimeUnit.SECONDS);
         herder.stop();
         herderExecutor.shutdown();
         herderExecutor.awaitTermination(10, TimeUnit.SECONDS);

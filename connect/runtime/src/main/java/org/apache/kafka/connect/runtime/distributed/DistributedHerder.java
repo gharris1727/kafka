@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.connect.runtime.distributed;
 
+import java.util.concurrent.CancellationException;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.config.ConfigDef;
@@ -1943,6 +1944,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
         DistributedHerderRequest<T> req = new DistributedHerderRequest<T>(time.milliseconds() + delayMs, requestSeqNum.incrementAndGet(), action, callback);
         requests.add(req);
         if (peekWithoutException() == req) {
+            log.debug("Waking up herder to process new request");
             member.wakeup();
         }
         return req;
@@ -2018,7 +2020,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                         synchronized (this) {
                             ZombieFencing activeFencing = activeZombieFencings.get(connName);
                             if (activeFencing != null) {
-                                activeFencing.completeExceptionally(new ConnectRestException(
+                                activeFencing.abort(new ConnectRestException(
                                     Response.Status.CONFLICT.getStatusCode(),
                                     "Failed to complete zombie fencing because a new set of task configs was generated"
                                 ));
@@ -2327,31 +2329,33 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
         private final String connName;
         private final int tasksToRecord;
         private final int taskGen;
-        private final FutureCallback<Void> fencingFollowup;
         private final KafkaFuture<Void> fencingFuture;
+        private final List<Callback<Void>> waitingCallbacks;
+        private Throwable abortException;
 
         public ZombieFencing(String connName, int tasksToFence, int tasksToRecord, int taskGen) {
             this.connName = connName;
             this.tasksToRecord = tasksToRecord;
             this.taskGen = taskGen;
-            this.fencingFollowup = new FutureCallback<>();
-            this.fencingFuture = worker.fenceZombies(connName, tasksToFence, configState.connectorConfig(connName)).thenApply(ignored -> {
-                // This callback will be called on the same thread that invokes KafkaFuture::thenApply if
-                // the future is already completed. Since that thread is the herder tick thread, we don't need
-                // to perform follow-up logic through an additional herder request (and if we tried, it would lead
-                // to deadlock)
-                addOrRunRequest(
-                        this::onZombieFencingSuccess,
-                        fencingFollowup
-                );
-                awaitFollowup();
-                return null;
-            });
+            this.waitingCallbacks = new ArrayList<>();
+            this.fencingFuture = worker.fenceZombies(connName, tasksToFence, configState.connectorConfig(connName))
+                .whenComplete((result, error) -> {
+                    // If the fencing was aborted, we substitute a meaningful exception
+                    if (error instanceof CancellationException && abortException != null) {
+                        error = abortException;
+                    }
+                    if (error != null) {
+                        complete(error, result);
+                    } else {
+                        addRequest(this::onZombieFencingSuccess, this::complete);
+                    }
+                });
         }
 
         // Invoked after the worker has successfully fenced out the producers of old task generations using an admin client
         // Note that work here will be performed on the herder's tick thread, so it should not block for very long
         private Void onZombieFencingSuccess() throws TimeoutException {
+            log.debug("Zombie fencing was successful, refreshing ConfigBackingStore");
             configBackingStore.refresh(1, TimeUnit.MINUTES);
             configState = configBackingStore.snapshot();
             if (taskGen < configState.taskConfigGeneration(connName)) {
@@ -2366,36 +2370,34 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
             return null;
         }
 
-        private void awaitFollowup() {
-            try {
-                fencingFollowup.get();
-            } catch (InterruptedException e) {
-                throw new ConnectException("Interrupted while performing zombie fencing", e);
-            } catch (ExecutionException e) {
-                Throwable cause = e.getCause();
-                if (cause instanceof ConnectException) {
-                    throw (ConnectException) cause;
-                } else {
-                    throw new ConnectException("Failed to perform round of zombie fencing", cause);
+        // Invoked after this fencing operation has completed in order to execute all fan-out callbacks.
+        private synchronized void complete(Throwable error, Void result) {
+            ConnectException callbackErrors = null;
+            for (Callback<Void> cb : waitingCallbacks) {
+                if (error != null && !(error instanceof ConnectException)) {
+                    error = new ConnectException("Failed to perform zombie fencing", error);
                 }
+                try {
+                    cb.onCompletion(error, result);
+                } catch (Throwable t) {
+                    if (callbackErrors == null) {
+                        callbackErrors = new ConnectException("Error(s) encountered while finishing zombie fencing", error);
+                    }
+                    callbackErrors.addSuppressed(t);
+                }
+            }
+            if (callbackErrors != null) {
+                throw callbackErrors;
             }
         }
 
-        public void completeExceptionally(Throwable t) {
-            fencingFollowup.onCompletion(t, null);
+        public synchronized void abort(Throwable t) {
+            this.abortException = t;
+            this.fencingFuture.cancel(true);
         }
 
-        public void addCallback(Callback<Void> callback) {
-            fencingFuture.whenComplete((ignored, error) -> {
-                if (error != null && !(error instanceof ConnectException)) {
-                    callback.onCompletion(
-                            new ConnectException("Failed to perform zombie fencing", error),
-                            null
-                    );
-                } else {
-                    callback.onCompletion(error, null);
-                }
-            });
+        public synchronized void addCallback(Callback<Void> callback) {
+            waitingCallbacks.add(callback);
         }
     }
 
