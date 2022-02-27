@@ -50,8 +50,6 @@ public class MirrorSourceTask extends SourceTask {
 
     private static final Logger log = LoggerFactory.getLogger(MirrorSourceTask.class);
 
-    private static final int MAX_OUTSTANDING_OFFSET_SYNCS = 10;
-
     private KafkaConsumer<byte[], byte[]> consumer;
     private KafkaProducer<byte[], byte[]> offsetProducer;
     private String sourceClusterAlias;
@@ -81,7 +79,7 @@ public class MirrorSourceTask extends SourceTask {
     @Override
     public void start(Map<String, String> props) {
         MirrorTaskConfig config = new MirrorTaskConfig(props);
-        outstandingOffsetSyncs = new Semaphore(MAX_OUTSTANDING_OFFSET_SYNCS);
+        outstandingOffsetSyncs = new Semaphore(config.maxOutstandingSyncs());
         consumerAccess = new Semaphore(1);  // let one thread at a time access the consumer
         sourceClusterAlias = config.sourceClusterAlias();
         metrics = config.metrics();
@@ -196,17 +194,19 @@ public class MirrorSourceTask extends SourceTask {
             long downstreamOffset) {
         PartitionState partitionState =
             partitionStates.computeIfAbsent(topicPartition, x -> new PartitionState(maxOffsetLag));
-        if (partitionState.update(upstreamOffset, downstreamOffset)) {
-            sendOffsetSync(topicPartition, upstreamOffset, downstreamOffset);
+        if (partitionState.shouldUpdate(upstreamOffset, downstreamOffset)) {
+            if (sendOffsetSync(topicPartition, upstreamOffset, downstreamOffset)) {
+                partitionState.update(upstreamOffset, downstreamOffset);
+            }
         }
     }
 
     // sends OffsetSync record upstream to internal offsets topic
-    private void sendOffsetSync(TopicPartition topicPartition, long upstreamOffset,
+    private boolean sendOffsetSync(TopicPartition topicPartition, long upstreamOffset,
             long downstreamOffset) {
         if (!outstandingOffsetSyncs.tryAcquire()) {
             // Too many outstanding offset syncs.
-            return;
+            return false;
         }
         OffsetSync offsetSync = new OffsetSync(topicPartition, upstreamOffset, downstreamOffset);
         ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(offsetSyncsTopic, 0,
@@ -220,6 +220,7 @@ public class MirrorSourceTask extends SourceTask {
             }
             outstandingOffsetSyncs.release();
         });
+        return true;
     }
  
     private Map<TopicPartition, Long> loadOffsets(Set<TopicPartition> topicPartitions) {
@@ -276,22 +277,23 @@ public class MirrorSourceTask extends SourceTask {
             this.maxOffsetLag = maxOffsetLag;
         }
 
-        // true if we should emit an offset sync
-        boolean update(long upstreamOffset, long downstreamOffset) {
-            boolean shouldSyncOffsets = false;
-            long upstreamStep = upstreamOffset - lastSyncUpstreamOffset;
-            long downstreamTargetOffset = lastSyncDownstreamOffset + upstreamStep;
-            if (lastSyncDownstreamOffset == -1L
-                    || downstreamOffset - downstreamTargetOffset >= maxOffsetLag
-                    || upstreamOffset - previousUpstreamOffset != 1L
-                    || downstreamOffset < previousDownstreamOffset) {
+        void update(long upstreamOffset, long downstreamOffset) {
+            if (shouldUpdate(upstreamOffset, downstreamOffset)) {
                 lastSyncUpstreamOffset = upstreamOffset;
                 lastSyncDownstreamOffset = downstreamOffset;
-                shouldSyncOffsets = true;
             }
             previousUpstreamOffset = upstreamOffset;
             previousDownstreamOffset = downstreamOffset;
-            return shouldSyncOffsets;
+        }
+
+        // true if we should emit an offset sync
+        boolean shouldUpdate(long upstreamOffset, long downstreamOffset) {
+            long upstreamStep = upstreamOffset - lastSyncUpstreamOffset;
+            long downstreamTargetOffset = lastSyncDownstreamOffset + upstreamStep;
+            return lastSyncDownstreamOffset == -1L
+                    || downstreamOffset - downstreamTargetOffset >= maxOffsetLag
+                    || upstreamOffset - previousUpstreamOffset != 1L
+                    || downstreamOffset < previousDownstreamOffset;
         }
     }
 }
