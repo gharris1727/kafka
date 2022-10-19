@@ -21,19 +21,17 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.runtime.Connect;
-import org.apache.kafka.connect.runtime.ConnectorConfig;
 import org.apache.kafka.connect.runtime.Herder;
 import org.apache.kafka.connect.runtime.Worker;
 import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.runtime.WorkerInfo;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
 import org.apache.kafka.connect.runtime.rest.RestServer;
-import org.apache.kafka.connect.runtime.rest.entities.ConnectorInfo;
+import org.apache.kafka.connect.runtime.standalone.ConfigLoader;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.runtime.standalone.StandaloneHerder;
 import org.apache.kafka.connect.storage.FileOffsetBackingStore;
 import org.apache.kafka.connect.storage.OffsetBackingStore;
-import org.apache.kafka.connect.util.FutureCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -101,21 +99,10 @@ public class ConnectStandalone {
             final Connect connect = new Connect(herder, rest);
             log.info("Kafka Connect standalone worker initialization took {}ms", time.hiResClockMs() - initStart);
 
+            ConfigLoader configLoader = ConfigLoader.getLoader(herder, Arrays.copyOfRange(args, 1, args.length));
             try {
                 connect.start();
-                for (final String connectorPropsFile : Arrays.copyOfRange(args, 1, args.length)) {
-                    Map<String, String> connectorProps = Utils.propsToStringMap(Utils.loadProps(connectorPropsFile));
-                    FutureCallback<Herder.Created<ConnectorInfo>> cb = new FutureCallback<>((error, info) -> {
-                        if (error != null)
-                            log.error("Failed to create job for {}", connectorPropsFile);
-                        else
-                            log.info("Created connector {}", info.result().name());
-                    });
-                    herder.putConnectorConfig(
-                            connectorProps.get(ConnectorConfig.NAME_CONFIG),
-                            connectorProps, false, cb);
-                    cb.get();
-                }
+                configLoader.start();
             } catch (Throwable t) {
                 log.error("Stopping after connector error", t);
                 connect.stop();
@@ -124,6 +111,7 @@ public class ConnectStandalone {
 
             // Shutdown will be triggered by Ctrl-C or via HTTP shutdown request
             connect.awaitStop();
+            configLoader.close();
 
         } catch (Throwable t) {
             log.error("Stopping due to error", t);
