@@ -153,6 +153,16 @@ allprojects {
     }
   }
   task printAllDependencies(type: DependencyReportTask) {}
+
+  task testClasspath {
+    doLast {
+      def classes = new ArrayList<String>();
+      classes.add(sourceSets.main.output.classesDirs.asPath);
+      classes.add(sourceSets.test.output.classesDirs.asPath);
+      classes.addAll(configurations.testRuntimeClasspath);
+      print classes.join(":")
+    }
+  }
 }
 
 def determineCommitId() {
@@ -211,8 +221,8 @@ if (file('.git').exists()) {
 } else {
   rat.enabled = false
 }
-println("Starting build with version $version (commit id ${commitId == null ? "null" : commitId.take(8)}) using Gradle $gradleVersion, Java ${JavaVersion.current()} and Scala ${versions.scala}")
-println("Build properties: maxParallelForks=$maxTestForks, maxScalacThreads=$maxScalacThreads, maxTestRetries=$userMaxTestRetries")
+project.logger.info("Starting build with version $version (commit id ${commitId == null ? "null" : commitId.take(8)}) using Gradle $gradleVersion, Java ${JavaVersion.current()} and Scala ${versions.scala}")
+project.logger.info("Build properties: maxParallelForks=$maxTestForks, maxScalacThreads=$maxScalacThreads, maxTestRetries=$userMaxTestRetries")
 
 subprojects {
 
@@ -918,6 +928,7 @@ project(':core') {
     testImplementation libs.apachedsMavibotPartition
     testImplementation libs.apachedsJdbmPartition
     testImplementation libs.junitJupiter
+    testImplementation libs.junitConsole
     testImplementation libs.slf4jlog4j
     testImplementation(libs.jfreechart) {
       exclude group: 'junit', module: 'junit'
@@ -2585,6 +2596,7 @@ project(':connect:runtime') {
     testImplementation libs.easymock
     testImplementation libs.junitJupiterApi
     testImplementation libs.junitVintageEngine
+    testImplementation libs.junitConsole
     testImplementation libs.powermockJunit4
     testImplementation libs.powermockEasymock
     testImplementation libs.mockitoInline

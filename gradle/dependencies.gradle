@@ -166,6 +166,7 @@ libs += [
   junitJupiter: "org.junit.jupiter:junit-jupiter:$versions.junit",
   junitJupiterApi: "org.junit.jupiter:junit-jupiter-api:$versions.junit",
   junitVintageEngine: "org.junit.vintage:junit-vintage-engine:$versions.junit",
+  junitConsole: "org.junit.platform:junit-platform-console-standalone:1.9.0",
   jqwik: "net.jqwik:jqwik:$versions.jqwik",
   hamcrest: "org.hamcrest:hamcrest:$versions.hamcrest",
   kafkaStreams_0100: "org.apache.kafka:kafka-streams:$versions.kafka_0100",
