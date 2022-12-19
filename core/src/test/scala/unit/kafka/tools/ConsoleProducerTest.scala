@@ -17,10 +17,11 @@
 
 package kafka.tools
 
+import java.nio.file.Files
 import kafka.tools.ConsoleProducer.LineMessageReader
-import kafka.utils.Exit
+import kafka.utils.{Exit, TestUtils}
 import org.apache.kafka.clients.producer.ProducerConfig
-import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import org.junit.jupiter.api.Test
 
 import java.util
@@ -67,6 +68,46 @@ class ConsoleProducerTest {
     "--producer-property",
     "client.id=producer-1"
   )
+  val batchSizeOverriddenByMaxPartitionMemoryBytesValue: Array[String] = Array(
+    "--broker-list",
+    "localhost:1001",
+    "--bootstrap-server",
+    "localhost:1002",
+    "--topic",
+    "t3",
+    "--batch-size",
+    "123",
+    "--max-partition-memory-bytes",
+    "456"
+  )
+  val btchSizeSetAndMaxPartitionMemoryBytesNotSet: Array[String] = Array(
+    "--broker-list",
+    "localhost:1001",
+    "--bootstrap-server",
+    "localhost:1002",
+    "--topic",
+    "t3",
+    "--batch-size",
+    "123"
+  )
+  val batchSizeNotSetAndMaxPartitionMemoryBytesSet: Array[String] = Array(
+    "--broker-list",
+    "localhost:1001",
+    "--bootstrap-server",
+    "localhost:1002",
+    "--topic",
+    "t3",
+    "--max-partition-memory-bytes",
+    "456"
+  )
+  val batchSizeDefault: Array[String] = Array(
+    "--broker-list",
+    "localhost:1001",
+    "--bootstrap-server",
+    "localhost:1002",
+    "--topic",
+    "t3"
+  )
 
   @Test
   def testValidConfigsBrokerList(): Unit = {
@@ -95,9 +136,32 @@ class ConsoleProducerTest {
   def testParseKeyProp(): Unit = {
     val config = new ConsoleProducer.ProducerConfig(brokerListValidArgs)
     val reader = Class.forName(config.readerClass).getDeclaredConstructor().newInstance().asInstanceOf[LineMessageReader]
-    reader.init(System.in,ConsoleProducer.getReaderProps(config))
-    assert(reader.keySeparator == "#")
-    assert(reader.parseKey)
+    reader.init(System.in, ConsoleProducer.getReaderProps(config))
+    assertTrue(reader.keySeparator == "#")
+    assertTrue(reader.parseKey)
+  }
+
+  @Test
+  def testParseReaderConfigFile(): Unit = {
+    val propsFile = TestUtils.tempFile()
+    val propsStream = Files.newOutputStream(propsFile.toPath)
+    propsStream.write("parse.key=true\n".getBytes())
+    propsStream.write("key.separator=|".getBytes())
+    propsStream.close()
+
+    val args = Array(
+      "--bootstrap-server", "localhost:9092",
+      "--topic", "test",
+      "--property", "key.separator=;",
+      "--property", "parse.headers=true",
+      "--reader-config", propsFile.getAbsolutePath
+    )
+    val config = new ConsoleProducer.ProducerConfig(args)
+    val reader = Class.forName(config.readerClass).getDeclaredConstructor().newInstance().asInstanceOf[LineMessageReader]
+    reader.init(System.in, ConsoleProducer.getReaderProps(config))
+    assertEquals(";", reader.keySeparator)
+    assertTrue(reader.parseKey)
+    assertTrue(reader.parseHeaders)
   }
 
   @Test
@@ -123,4 +187,37 @@ class ConsoleProducerTest {
     assertEquals("console-producer",
       producerConfig.getString(ProducerConfig.CLIENT_ID_CONFIG))
   }
+
+  @Test
+  def testBatchSizeOverriddenByMaxPartitionMemoryBytesValue(): Unit = {
+    val config = new ConsoleProducer.ProducerConfig(batchSizeOverriddenByMaxPartitionMemoryBytesValue)
+    val producerConfig = new ProducerConfig(ConsoleProducer.producerProps(config))
+    assertEquals(456,
+      producerConfig.getInt(ProducerConfig.BATCH_SIZE_CONFIG))
+  }
+
+  @Test
+  def testBatchSizeSetAndMaxPartitionMemoryBytesNotSet(): Unit = {
+    val config = new ConsoleProducer.ProducerConfig(btchSizeSetAndMaxPartitionMemoryBytesNotSet)
+    val producerConfig = new ProducerConfig(ConsoleProducer.producerProps(config))
+    assertEquals(123,
+      producerConfig.getInt(ProducerConfig.BATCH_SIZE_CONFIG))
+  }
+
+  @Test
+  def testDefaultBatchSize(): Unit = {
+    val config = new ConsoleProducer.ProducerConfig(batchSizeDefault)
+    val producerConfig = new ProducerConfig(ConsoleProducer.producerProps(config))
+    assertEquals(16*1024,
+      producerConfig.getInt(ProducerConfig.BATCH_SIZE_CONFIG))
+  }
+
+  @Test
+  def testBatchSizeNotSetAndMaxPartitionMemoryBytesSet (): Unit = {
+    val config = new ConsoleProducer.ProducerConfig(batchSizeNotSetAndMaxPartitionMemoryBytesSet)
+    val producerConfig = new ProducerConfig(ConsoleProducer.producerProps(config))
+    assertEquals(456,
+      producerConfig.getInt(ProducerConfig.BATCH_SIZE_CONFIG))
+  }
+
 }

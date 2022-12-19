@@ -17,34 +17,39 @@
 
 package kafka.log
 
-import java.io.{BufferedWriter, File, FileWriter}
+import java.io.{BufferedWriter, File, FileWriter, IOException}
 import java.nio.ByteBuffer
 import java.nio.file.{Files, NoSuchFileException, Paths}
 import java.util.Properties
-import kafka.api.{ApiVersion, KAFKA_0_11_0_IV0}
 import kafka.server.epoch.{EpochEntry, LeaderEpochFileCache}
 import kafka.server.{BrokerTopicStats, FetchDataInfo, KafkaConfig, LogDirFailureChannel}
 import kafka.server.metadata.MockConfigRepository
 import kafka.utils.{CoreUtils, MockTime, Scheduler, TestUtils}
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.errors.KafkaStorageException
 import org.apache.kafka.common.record.{CompressionType, ControlRecordType, DefaultRecordBatch, MemoryRecords, RecordBatch, RecordVersion, SimpleRecord, TimestampType}
 import org.apache.kafka.common.utils.{Time, Utils}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertThrows, assertTrue}
+import org.apache.kafka.server.common.MetadataVersion
+import org.apache.kafka.server.common.MetadataVersion.IBP_0_11_0_IV0
+import org.junit.jupiter.api.Assertions.{assertDoesNotThrow, assertEquals, assertFalse, assertNotEquals, assertThrows, assertTrue}
+import org.junit.jupiter.api.function.Executable
 import org.junit.jupiter.api.{AfterEach, BeforeEach, Test}
 import org.mockito.ArgumentMatchers
 import org.mockito.ArgumentMatchers.{any, anyLong}
 import org.mockito.Mockito.{mock, reset, times, verify, when}
 
+import java.util.concurrent.ConcurrentMap
 import scala.annotation.nowarn
 import scala.collection.mutable.ListBuffer
 import scala.collection.{Iterable, Map, mutable}
 import scala.jdk.CollectionConverters._
 
 class LogLoaderTest {
-  var config: KafkaConfig = null
+  var config: KafkaConfig = _
   val brokerTopicStats = new BrokerTopicStats
   val maxTransactionTimeoutMs: Int = 5 * 60 * 1000
-  val maxProducerIdExpirationMs: Int = 60 * 60 * 1000
+  val producerStateManagerConfig: ProducerStateManagerConfig = new ProducerStateManagerConfig(kafka.server.Defaults.ProducerIdExpirationMs)
+  val producerIdExpirationCheckIntervalMs: Int = kafka.server.Defaults.ProducerIdExpirationCheckIntervalMs
   val tmpDir = TestUtils.tempDir()
   val logDir = TestUtils.randomPartitionLogDir(tmpDir)
   val mockTime = new MockTime()
@@ -61,6 +66,12 @@ class LogLoaderTest {
     Utils.delete(tmpDir)
   }
 
+  object ErrorTypes extends Enumeration {
+    type Errors = Value
+    val IOException, RuntimeException, KafkaStorageExceptionWithIOExceptionCause,
+    KafkaStorageExceptionWithoutIOExceptionCause = Value
+  }
+
   @Test
   def testLogRecoveryIsCalledUponBrokerCrash(): Unit = {
     // LogManager must realize correctly if the last shutdown was not clean and the logs need
@@ -73,15 +84,19 @@ class LogLoaderTest {
     var log: UnifiedLog = null
     val time = new MockTime()
     var cleanShutdownInterceptedValue = false
-    case class SimulateError(var hasError: Boolean = false)
+    case class SimulateError(var hasError: Boolean = false, var errorType: ErrorTypes.Errors = ErrorTypes.RuntimeException)
     val simulateError = SimulateError()
+    val logDirFailureChannel = new LogDirFailureChannel(logDirs.size)
 
     val maxTransactionTimeoutMs = 5 * 60 * 1000
-    val maxProducerIdExpirationMs = 60 * 60 * 1000
+    val producerIdExpirationCheckIntervalMs = kafka.server.Defaults.ProducerIdExpirationCheckIntervalMs
 
     // Create a LogManager with some overridden methods to facilitate interception of clean shutdown
-    // flag and to inject a runtime error
-    def interceptedLogManager(logConfig: LogConfig, logDirs: Seq[File], simulateError: SimulateError): LogManager = {
+    // flag and to inject an error
+    def interceptedLogManager(logConfig: LogConfig,
+                              logDirs: Seq[File],
+                              logDirFailureChannel: LogDirFailureChannel
+                             ): LogManager = {
       new LogManager(
         logDirs = logDirs.map(_.getAbsoluteFile),
         initialOfflineDirs = Array.empty[File],
@@ -94,19 +109,29 @@ class LogLoaderTest {
         flushStartOffsetCheckpointMs = 10000L,
         retentionCheckMs = 1000L,
         maxTransactionTimeoutMs = maxTransactionTimeoutMs,
-        maxPidExpirationMs = maxProducerIdExpirationMs,
+        producerStateManagerConfig = producerStateManagerConfig,
+        producerIdExpirationCheckIntervalMs = producerIdExpirationCheckIntervalMs,
         interBrokerProtocolVersion = config.interBrokerProtocolVersion,
         scheduler = time.scheduler,
         brokerTopicStats = new BrokerTopicStats(),
-        logDirFailureChannel = new LogDirFailureChannel(logDirs.size),
+        logDirFailureChannel = logDirFailureChannel,
         time = time,
         keepPartitionMetadataFile = config.usesTopicId) {
 
         override def loadLog(logDir: File, hadCleanShutdown: Boolean, recoveryPoints: Map[TopicPartition, Long],
                              logStartOffsets: Map[TopicPartition, Long], defaultConfig: LogConfig,
-                             topicConfigs: Map[String, LogConfig]): UnifiedLog = {
+                             topicConfigs: Map[String, LogConfig], numRemainingSegments: ConcurrentMap[String, Int]): UnifiedLog = {
           if (simulateError.hasError) {
-            throw new RuntimeException("Simulated error")
+            simulateError.errorType match {
+              case ErrorTypes.KafkaStorageExceptionWithIOExceptionCause =>
+                throw new KafkaStorageException(new IOException("Simulated Kafka storage error with IOException cause"))
+              case ErrorTypes.KafkaStorageExceptionWithoutIOExceptionCause =>
+                throw new KafkaStorageException("Simulated Kafka storage error without IOException cause")
+              case ErrorTypes.IOException =>
+                throw new IOException("Simulated IO error")
+              case _ =>
+                throw new RuntimeException("Simulated Runtime error")
+            }
           }
           cleanShutdownInterceptedValue = hadCleanShutdown
           val topicPartition = UnifiedLog.parseTopicPartitionName(logDir)
@@ -117,7 +142,7 @@ class LogLoaderTest {
           val segments = new LogSegments(topicPartition)
           val leaderEpochCache = UnifiedLog.maybeCreateLeaderEpochCache(logDir, topicPartition, logDirFailureChannel, config.recordVersion, "")
           val producerStateManager = new ProducerStateManager(topicPartition, logDir,
-            maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+            maxTransactionTimeoutMs, producerStateManagerConfig, time)
           val logLoader = new LogLoader(logDir, topicPartition, config, time.scheduler, time,
             logDirFailureChannel, hadCleanShutdown, segments, logStartOffset, logRecoveryPoint,
             leaderEpochCache, producerStateManager)
@@ -126,16 +151,30 @@ class LogLoaderTest {
             offsets.nextOffsetMetadata, mockTime.scheduler, mockTime, topicPartition,
             logDirFailureChannel)
           new UnifiedLog(offsets.logStartOffset, localLog, brokerTopicStats,
-            LogManager.ProducerIdExpirationCheckIntervalMs, leaderEpochCache,
+            producerIdExpirationCheckIntervalMs, leaderEpochCache,
             producerStateManager, None, true)
         }
       }
     }
 
+    def initializeLogManagerForSimulatingErrorTest(logDirFailureChannel: LogDirFailureChannel = new LogDirFailureChannel(logDirs.size)
+                                                  ): (LogManager, Executable) = {
+      val logManager: LogManager = interceptedLogManager(logConfig, logDirs, logDirFailureChannel)
+      log = logManager.getOrCreateLog(topicPartition, isNew = true, topicId = None)
+
+      assertFalse(logDirFailureChannel.hasOfflineLogDir(logDir.getAbsolutePath), "log dir should not be offline before load logs")
+
+      val runLoadLogs: Executable = () => {
+        val defaultConfig = logManager.currentDefaultConfig
+        logManager.loadLogs(defaultConfig, logManager.fetchTopicConfigOverrides(defaultConfig, Set.empty))
+      }
+
+      (logManager, runLoadLogs)
+    }
+
     val cleanShutdownFile = new File(logDir, LogLoader.CleanShutdownFile)
     locally {
-      val logManager: LogManager = interceptedLogManager(logConfig, logDirs, simulateError)
-      log = logManager.getOrCreateLog(topicPartition, isNew = true, topicId = None)
+      val (logManager, _) = initializeLogManagerForSimulatingErrorTest()
 
       // Load logs after a clean shutdown
       Files.createFile(cleanShutdownFile.toPath)
@@ -156,33 +195,48 @@ class LogLoaderTest {
     }
 
     locally {
-      simulateError.hasError = true
-      val logManager: LogManager = interceptedLogManager(logConfig, logDirs, simulateError)
-      log = logManager.getOrCreateLog(topicPartition, isNew = true, topicId = None)
+      val (logManager, runLoadLogs) = initializeLogManagerForSimulatingErrorTest(logDirFailureChannel)
 
-      // Simulate error
-      assertThrows(classOf[RuntimeException], () => {
-        val defaultConfig = logManager.currentDefaultConfig
-        logManager.loadLogs(defaultConfig, logManager.fetchTopicConfigOverrides(defaultConfig, Set.empty))
-      })
+      // Simulate Runtime error
+      simulateError.hasError = true
+      simulateError.errorType = ErrorTypes.RuntimeException
+      assertThrows(classOf[RuntimeException], runLoadLogs)
       assertFalse(cleanShutdownFile.exists(), "Clean shutdown file must not have existed")
+      assertFalse(logDirFailureChannel.hasOfflineLogDir(logDir.getAbsolutePath), "log dir should not turn offline when Runtime Exception thrown")
+
+      // Simulate Kafka storage error with IOException cause
+      // in this case, the logDir will be added into offline list before KafkaStorageThrown. So we don't verify it here
+      simulateError.errorType = ErrorTypes.KafkaStorageExceptionWithIOExceptionCause
+      assertDoesNotThrow(runLoadLogs, "KafkaStorageException with IOException cause should be caught and handled")
+
+      // Simulate Kafka storage error without IOException cause
+      simulateError.errorType = ErrorTypes.KafkaStorageExceptionWithoutIOExceptionCause
+      assertThrows(classOf[KafkaStorageException], runLoadLogs, "should throw exception when KafkaStorageException without IOException cause")
+      assertFalse(logDirFailureChannel.hasOfflineLogDir(logDir.getAbsolutePath), "log dir should not turn offline when KafkaStorageException without IOException cause thrown")
+
+      // Simulate IO error
+      simulateError.errorType = ErrorTypes.IOException
+      assertDoesNotThrow(runLoadLogs, "IOException should be caught and handled")
+      assertTrue(logDirFailureChannel.hasOfflineLogDir(logDir.getAbsolutePath), "the log dir should turn offline after IOException thrown")
+
       // Do not simulate error on next call to LogManager#loadLogs. LogManager must understand that log had unclean shutdown the last time.
       simulateError.hasError = false
       cleanShutdownInterceptedValue = true
       val defaultConfig = logManager.currentDefaultConfig
       logManager.loadLogs(defaultConfig, logManager.fetchTopicConfigOverrides(defaultConfig, Set.empty))
       assertFalse(cleanShutdownInterceptedValue, "Unexpected value for clean shutdown flag")
+      logManager.shutdown()
     }
   }
 
   @Test
   def testProducerSnapshotsRecoveryAfterUncleanShutdownV1(): Unit = {
-    testProducerSnapshotsRecoveryAfterUncleanShutdown(ApiVersion.minSupportedFor(RecordVersion.V1).version)
+    testProducerSnapshotsRecoveryAfterUncleanShutdown(MetadataVersion.minSupportedFor(RecordVersion.V1).version)
   }
 
   @Test
   def testProducerSnapshotsRecoveryAfterUncleanShutdownCurrentMessageFormat(): Unit = {
-    testProducerSnapshotsRecoveryAfterUncleanShutdown(ApiVersion.latestVersion.version)
+    testProducerSnapshotsRecoveryAfterUncleanShutdown(MetadataVersion.latest.version)
   }
 
   private def createLog(dir: File,
@@ -193,11 +247,11 @@ class LogLoaderTest {
                         scheduler: Scheduler = mockTime.scheduler,
                         time: Time = mockTime,
                         maxTransactionTimeoutMs: Int = maxTransactionTimeoutMs,
-                        maxProducerIdExpirationMs: Int = maxProducerIdExpirationMs,
-                        producerIdExpirationCheckIntervalMs: Int = LogManager.ProducerIdExpirationCheckIntervalMs,
+                        maxProducerIdExpirationMs: Int = producerStateManagerConfig.producerIdExpirationMs,
+                        producerIdExpirationCheckIntervalMs: Int = producerIdExpirationCheckIntervalMs,
                         lastShutdownClean: Boolean = true): UnifiedLog = {
     LogTestUtils.createLog(dir, config, brokerTopicStats, scheduler, time, logStartOffset, recoveryPoint,
-      maxTransactionTimeoutMs, maxProducerIdExpirationMs, producerIdExpirationCheckIntervalMs, lastShutdownClean)
+      maxTransactionTimeoutMs, new ProducerStateManagerConfig(maxProducerIdExpirationMs), producerIdExpirationCheckIntervalMs, lastShutdownClean)
   }
 
   private def createLogWithOffsetOverflow(logConfig: LogConfig): (UnifiedLog, LogSegment) = {
@@ -267,7 +321,7 @@ class LogLoaderTest {
     val expectedSegmentsWithReads = mutable.Set[Long]()
     val expectedSnapshotOffsets = mutable.Set[Long]()
 
-    if (logConfig.messageFormatVersion < KAFKA_0_11_0_IV0) {
+    if (logConfig.messageFormatVersion.isLessThan(IBP_0_11_0_IV0)) {
       expectedSegmentsWithReads += activeSegmentOffset
       expectedSnapshotOffsets ++= log.logSegments.map(_.baseOffset).toVector.takeRight(2) :+ log.logEndOffset
     } else {
@@ -277,7 +331,7 @@ class LogLoaderTest {
 
     def createLogWithInterceptedReads(recoveryPoint: Long): UnifiedLog = {
       val maxTransactionTimeoutMs = 5 * 60 * 1000
-      val maxProducerIdExpirationMs = 60 * 60 * 1000
+      val producerIdExpirationCheckIntervalMs = kafka.server.Defaults.ProducerIdExpirationCheckIntervalMs
       val topicPartition = UnifiedLog.parseTopicPartitionName(logDir)
       val logDirFailureChannel = new LogDirFailureChannel(10)
       // Intercept all segment read calls
@@ -302,7 +356,7 @@ class LogLoaderTest {
       }
       val leaderEpochCache = UnifiedLog.maybeCreateLeaderEpochCache(logDir, topicPartition, logDirFailureChannel, logConfig.recordVersion, "")
       val producerStateManager = new ProducerStateManager(topicPartition, logDir,
-        maxTransactionTimeoutMs, maxProducerIdExpirationMs, mockTime)
+        maxTransactionTimeoutMs, producerStateManagerConfig, mockTime)
       val logLoader = new LogLoader(
         logDir,
         topicPartition,
@@ -321,7 +375,7 @@ class LogLoaderTest {
         offsets.nextOffsetMetadata, mockTime.scheduler, mockTime, topicPartition,
         logDirFailureChannel)
       new UnifiedLog(offsets.logStartOffset, localLog, brokerTopicStats,
-        LogManager.ProducerIdExpirationCheckIntervalMs, leaderEpochCache, producerStateManager,
+        producerIdExpirationCheckIntervalMs, leaderEpochCache, producerStateManager,
         None, keepPartitionMetadataFile = true)
     }
 
@@ -350,10 +404,10 @@ class LogLoaderTest {
   @Test
   def testSkipLoadingIfEmptyProducerStateBeforeTruncation(): Unit = {
     val maxTransactionTimeoutMs = 60000
-    val maxProducerIdExpirationMs = 300000
+    val producerStateManagerConfig = new ProducerStateManagerConfig(300000)
 
     val stateManager: ProducerStateManager = mock(classOf[ProducerStateManager])
-    when(stateManager.maxProducerIdExpirationMs).thenReturn(maxProducerIdExpirationMs)
+    when(stateManager.producerStateManagerConfig).thenReturn(producerStateManagerConfig)
     when(stateManager.maxTransactionTimeoutMs).thenReturn(maxTransactionTimeoutMs)
     when(stateManager.latestSnapshotOffset).thenReturn(None)
     when(stateManager.mapEndOffset).thenReturn(0L)
@@ -439,7 +493,7 @@ class LogLoaderTest {
       firstAppendTimestamp, coordinatorEpoch = coordinatorEpoch)
     assertEquals(firstAppendTimestamp, log.producerStateManager.lastEntry(producerId).get.lastTimestamp)
 
-    val maxProducerIdExpirationMs = 60 * 60 * 1000
+    val maxProducerIdExpirationMs = kafka.server.Defaults.ProducerIdExpirationMs
     mockTime.sleep(maxProducerIdExpirationMs)
     assertEquals(None, log.producerStateManager.lastEntry(producerId))
 
@@ -459,12 +513,12 @@ class LogLoaderTest {
   @Test
   def testSkipTruncateAndReloadIfOldMessageFormatAndNoCleanShutdown(): Unit = {
     val maxTransactionTimeoutMs = 60000
-    val maxProducerIdExpirationMs = 300000
+    val producerStateManagerConfig = new ProducerStateManagerConfig(300000)
 
     val stateManager: ProducerStateManager = mock(classOf[ProducerStateManager])
     when(stateManager.isEmpty).thenReturn(true)
     when(stateManager.firstUnstableOffset).thenReturn(None)
-    when(stateManager.maxProducerIdExpirationMs).thenReturn(maxProducerIdExpirationMs)
+    when(stateManager.producerStateManagerConfig).thenReturn(producerStateManagerConfig)
     when(stateManager.maxTransactionTimeoutMs).thenReturn(maxTransactionTimeoutMs)
 
     val topicPartition = UnifiedLog.parseTopicPartitionName(logDir)
@@ -513,12 +567,12 @@ class LogLoaderTest {
   @Test
   def testSkipTruncateAndReloadIfOldMessageFormatAndCleanShutdown(): Unit = {
     val maxTransactionTimeoutMs = 60000
-    val maxProducerIdExpirationMs = 300000
+    val producerStateManagerConfig = new ProducerStateManagerConfig(300000)
 
     val stateManager: ProducerStateManager = mock(classOf[ProducerStateManager])
     when(stateManager.isEmpty).thenReturn(true)
     when(stateManager.firstUnstableOffset).thenReturn(None)
-    when(stateManager.maxProducerIdExpirationMs).thenReturn(maxProducerIdExpirationMs)
+    when(stateManager.producerStateManagerConfig).thenReturn(producerStateManagerConfig)
     when(stateManager.maxTransactionTimeoutMs).thenReturn(maxTransactionTimeoutMs)
 
     val topicPartition = UnifiedLog.parseTopicPartitionName(logDir)
@@ -565,13 +619,13 @@ class LogLoaderTest {
   @Test
   def testSkipTruncateAndReloadIfNewMessageFormatAndCleanShutdown(): Unit = {
     val maxTransactionTimeoutMs = 60000
-    val maxProducerIdExpirationMs = 300000
+    val producerStateManagerConfig = new ProducerStateManagerConfig(300000)
 
     val stateManager: ProducerStateManager = mock(classOf[ProducerStateManager])
     when(stateManager.latestSnapshotOffset).thenReturn(None)
     when(stateManager.isEmpty).thenReturn(true)
     when(stateManager.firstUnstableOffset).thenReturn(None)
-    when(stateManager.maxProducerIdExpirationMs).thenReturn(maxProducerIdExpirationMs)
+    when(stateManager.producerStateManagerConfig).thenReturn(producerStateManagerConfig)
     when(stateManager.maxTransactionTimeoutMs).thenReturn(maxTransactionTimeoutMs)
 
     val topicPartition = UnifiedLog.parseTopicPartitionName(logDir)
@@ -885,8 +939,8 @@ class LogLoaderTest {
 
     // The files remain absent until we first access it because we are doing lazy loading for time index and offset index
     // files but in this test case we need to create these files in order to test we will remove them.
-    bogusIndex2.createNewFile()
-    bogusTimeIndex2.createNewFile()
+    Files.createFile(bogusIndex2.toPath)
+    Files.createFile(bogusTimeIndex2.toPath)
 
     def createRecords = TestUtils.singletonRecords(value = "test".getBytes, timestamp = mockTime.milliseconds)
     val logConfig = LogTestUtils.createLogConfig(segmentBytes = createRecords.sizeInBytes * 5, segmentIndexBytes = 1000, indexIntervalBytes = 1)

@@ -248,6 +248,10 @@ object ConsoleConsumer extends Logging {
       .withRequiredArg
       .describedAs("prop")
       .ofType(classOf[String])
+    val messageFormatterConfigOpt = parser.accepts("formatter-config", s"Config properties file to initialize the message formatter. Note that $messageFormatterArgOpt takes precedence over this config.")
+      .withRequiredArg
+      .describedAs("config file")
+      .ofType(classOf[String])
     val resetBeginningOpt = parser.accepts("from-beginning", "If the consumer does not already have an established offset to consume from, " +
       "start with the earliest message present in the log rather than the latest message.")
     val maxMessagesOpt = parser.accepts("max-messages", "The maximum number of messages to consume before exiting. If not set, consumption is continual.")
@@ -295,9 +299,9 @@ object ConsoleConsumer extends Logging {
     val enableSystestEventsLogging = options.has(enableSystestEventsLoggingOpt)
 
     // topic must be specified.
-    var topicArg: String = null
-    var includedTopicsArg: String = null
-    var filterSpec: TopicFilter = null
+    var topicArg: String = _
+    var includedTopicsArg: String = _
+    var filterSpec: TopicFilter = _
     val extraConsumerProps = CommandLineUtils.parseKeyValueArgs(options.valuesOf(consumerPropertyOpt).asScala)
     val consumerProps = if (options.has(consumerConfigOpt))
       Utils.loadProps(options.valueOf(consumerConfigOpt))
@@ -307,7 +311,11 @@ object ConsoleConsumer extends Logging {
     val partitionArg = if (options.has(partitionIdOpt)) Some(options.valueOf(partitionIdOpt).intValue) else None
     val skipMessageOnError = options.has(skipMessageOnErrorOpt)
     val messageFormatterClass = Class.forName(options.valueOf(messageFormatterOpt))
-    val formatterArgs = CommandLineUtils.parseKeyValueArgs(options.valuesOf(messageFormatterArgOpt).asScala)
+    val formatterArgs = if (options.has(messageFormatterConfigOpt))
+      Utils.loadProps(options.valueOf(messageFormatterConfigOpt))
+    else
+      new Properties()
+    formatterArgs ++= CommandLineUtils.parseKeyValueArgs(options.valuesOf(messageFormatterArgOpt).asScala)
     val maxMessages = if (options.has(maxMessagesOpt)) options.valueOf(maxMessagesOpt).intValue else -1
     val timeoutMs = if (options.has(timeoutMsOpt)) options.valueOf(timeoutMsOpt).intValue else -1
     val bootstrapServer = options.valueOf(bootstrapServerOpt)

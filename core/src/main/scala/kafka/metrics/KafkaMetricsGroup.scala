@@ -19,9 +19,10 @@ package kafka.metrics
 
 import java.util.concurrent.TimeUnit
 
-import com.yammer.metrics.core.{Gauge, MetricName, Meter, Histogram, Timer}
+import com.yammer.metrics.core.{Gauge, Histogram, Meter, MetricName, Timer}
 import kafka.utils.Logging
 import org.apache.kafka.common.utils.Sanitizer
+import org.apache.kafka.server.metrics.KafkaYammerMetrics
 
 trait KafkaMetricsGroup extends Logging {
 
@@ -52,7 +53,7 @@ trait KafkaMetricsGroup extends Logging {
 
     nameBuilder.append(typeName)
 
-    if (name.length > 0) {
+    if (name.nonEmpty) {
       nameBuilder.append(",name=")
       nameBuilder.append(name)
     }
@@ -96,7 +97,7 @@ trait KafkaMetricsGroup extends Logging {
     if (filteredTags.nonEmpty) {
       // convert dot to _ since reporters like Graphite typically use dot to represent hierarchy
       val tagsString = filteredTags
-        .toList.sortWith((t1, t2) => t1._1 < t2._1)
+        .toList.sortBy(_._1)
         .map { case (key, value) => "%s.%s".format(key, value.replaceAll("\\.", "_"))}
         .mkString(".")
 

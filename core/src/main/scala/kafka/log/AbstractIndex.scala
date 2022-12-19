@@ -22,11 +22,11 @@ import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.{ByteBuffer, MappedByteBuffer}
 import java.util.concurrent.locks.{Lock, ReentrantLock}
-
 import kafka.common.IndexOffsetOverflowException
 import kafka.utils.CoreUtils.inLock
 import kafka.utils.{CoreUtils, Logging}
 import org.apache.kafka.common.utils.{ByteBufferUnmapper, OperatingSystem, Utils}
+import org.apache.kafka.server.log.internals.IndexEntry
 
 /**
  * The abstract index class which holds entry format agnostic methods.
@@ -188,7 +188,7 @@ abstract class AbstractIndex(@volatile private var _file: File, val baseOffset: 
             safeForceUnmap()
           raf.setLength(roundedNewSize)
           _length = roundedNewSize
-          mmap = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, roundedNewSize)
+          mmap = raf.getChannel.map(FileChannel.MapMode.READ_WRITE, 0, roundedNewSize)
           _maxEntries = mmap.limit() / entrySize
           mmap.position(position)
           debug(s"Resized ${file.getAbsolutePath} to $roundedNewSize, position is ${mmap.position()} " +

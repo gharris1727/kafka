@@ -40,7 +40,7 @@ object Kafka extends Logging {
     // This is a bit of an ugly crutch till we get a chance to rework the entire command line parsing
     optionParser.accepts("version", "Print version information and exit.")
 
-    if (args.length == 0 || args.contains("--help")) {
+    if (args.isEmpty || args.contains("--help")) {
       CommandLineUtils.printUsageAndDie(optionParser,
         "USAGE: java [options] %s server.properties [--override property=value]*".format(this.getClass.getCanonicalName.split('$').head))
     }
@@ -63,6 +63,12 @@ object Kafka extends Logging {
     props
   }
 
+  // For Zk mode, the API forwarding is currently enabled only under migration flag. We can
+  // directly do a static IBP check to see API forwarding is enabled here because IBP check is
+  // static in Zk mode.
+  private def enableApiForwarding(config: KafkaConfig) =
+    config.migrationEnabled && config.interBrokerProtocolVersion.isApiForwardingEnabled
+
   private def buildServer(props: Properties): Server = {
     val config = KafkaConfig.fromProps(props, false)
     if (config.requiresZookeeper) {
@@ -70,7 +76,7 @@ object Kafka extends Logging {
         config,
         Time.SYSTEM,
         threadNamePrefix = None,
-        enableForwarding = false
+        enableForwarding = enableApiForwarding(config)
       )
     } else {
       new KafkaRaftServer(
@@ -108,9 +114,9 @@ object Kafka extends Logging {
 
       try server.startup()
       catch {
-        case _: Throwable =>
+        case e: Throwable =>
           // KafkaServer.startup() calls shutdown() in case of exceptions, so we invoke `exit` to set the status code
-          fatal("Exiting Kafka.")
+          fatal("Exiting Kafka due to fatal exception during startup.", e)
           Exit.exit(1)
       }
 

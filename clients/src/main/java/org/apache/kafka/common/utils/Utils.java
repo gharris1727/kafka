@@ -52,6 +52,9 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -463,8 +466,7 @@ public final class Utils {
             throw new ClassNotFoundException(String.format("Unable to access " +
                 "constructor of %s", className), e);
         } catch (InvocationTargetException e) {
-            throw new ClassNotFoundException(String.format("Unable to invoke " +
-                "constructor of %s", className), e);
+            throw new KafkaException(String.format("The constructor of %s threw an exception", className), e.getCause());
         }
     }
 
@@ -596,13 +598,25 @@ public final class Utils {
      */
     public static <T> String join(Collection<T> collection, String separator) {
         Objects.requireNonNull(collection);
+        return mkString(collection.stream(), "", "", separator);
+    }
+
+    /**
+     * Create a string representation of a stream surrounded by `begin` and `end` and joined by `separator`.
+     *
+     * @return The string representation.
+     */
+    public static <T> String mkString(Stream<T> stream, String begin, String end, String separator) {
+        Objects.requireNonNull(stream);
         StringBuilder sb = new StringBuilder();
-        Iterator<T> iter = collection.iterator();
+        sb.append(begin);
+        Iterator<T> iter = stream.iterator();
         while (iter.hasNext()) {
             sb.append(iter.next());
             if (iter.hasNext())
                 sb.append(separator);
         }
+        sb.append(end);
         return sb.toString();
     }
 
@@ -984,6 +998,18 @@ public final class Utils {
             throw exception;
     }
 
+    public static void swallow(
+        Logger log,
+        String what,
+        Runnable runnable
+    ) {
+        try {
+            runnable.run();
+        } catch (Throwable e) {
+            log.warn("{} error", what, e);
+        }
+    }
+
     /**
      * An {@link AutoCloseable} interface without a throws clause in the signature
      *
@@ -998,6 +1024,14 @@ public final class Utils {
 
     /**
      * Closes {@code closeable} and if an exception is thrown, it is logged at the WARN level.
+     * <b>Be cautious when passing method references as an argument.</b> For example:
+     * <p>
+     * {@code closeQuietly(task::stop, "source task");}
+     * <p>
+     * Although this method gracefully handles null {@link AutoCloseable} objects, attempts to take a method
+     * reference from a null object will result in a {@link NullPointerException}. In the example code above,
+     * it would be the caller's responsibility to ensure that {@code task} was non-null before attempting to
+     * use a method reference from it.
      */
     public static void closeQuietly(AutoCloseable closeable, String name) {
         if (closeable != null) {
@@ -1009,6 +1043,17 @@ public final class Utils {
         }
     }
 
+    /**
+    * Closes {@code closeable} and if an exception is thrown, it is registered to the firstException parameter.
+    * <b>Be cautious when passing method references as an argument.</b> For example:
+    * <p>
+    * {@code closeQuietly(task::stop, "source task");}
+    * <p>
+    * Although this method gracefully handles null {@link AutoCloseable} objects, attempts to take a method
+    * reference from a null object will result in a {@link NullPointerException}. In the example code above,
+    * it would be the caller's responsibility to ensure that {@code task} was non-null before attempting to
+    * use a method reference from it.
+    */
     public static void closeQuietly(AutoCloseable closeable, String name, AtomicReference<Throwable> firstException) {
         if (closeable != null) {
             try {
@@ -1038,7 +1083,7 @@ public final class Utils {
      *
      * Note: changing this method in the future will possibly cause partition selection not to be
      * compatible with the existing messages already placed on a partition since it is used
-     * in producer's {@link org.apache.kafka.clients.producer.internals.DefaultPartitioner}
+     * in producer's partition selection logic {@link org.apache.kafka.clients.producer.KafkaProducer}
      *
      * @param number a given number
      * @return a positive number.
@@ -1416,7 +1461,7 @@ public final class Utils {
     }
 
     /**
-     * Get an array containing all of the {@link Object#toString names} of a given enumerable type.
+     * Get an array containing all of the {@link Object#toString string representations} of a given enumerable type.
      * @param enumClass the enum class; may not be null
      * @return an array with the names of every value for the enum class; never null, but may be empty
      * if there are no values defined for the enum
@@ -1430,6 +1475,17 @@ public final class Utils {
         return Stream.of(enumClass.getEnumConstants())
                 .map(Object::toString)
                 .toArray(String[]::new);
+    }
+
+    /**
+     * Convert time instant to readable string for logging
+     * @param timestamp the timestamp of the instant to be converted.
+     *
+     * @return string value of a given timestamp in the format "yyyy-MM-dd HH:mm:ss,SSS"
+     */
+    public static String toLogDateTimeFormat(long timestamp) {
+        final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss,SSS XXX");
+        return Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).format(dateTimeFormatter);
     }
 
 }

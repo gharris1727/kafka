@@ -94,11 +94,12 @@ public class EmbeddedConnectCluster {
 
     private EmbeddedConnectCluster(String name, Map<String, String> workerProps, int numWorkers,
                                    int numBrokers, Properties brokerProps,
-                                   boolean maskExitProcedures) {
+                                   boolean maskExitProcedures,
+                                   Map<String, String> additionalKafkaClusterClientConfigs) {
         this.workerProps = workerProps;
         this.connectClusterName = name;
         this.numBrokers = numBrokers;
-        this.kafkaCluster = new EmbeddedKafkaCluster(numBrokers, brokerProps);
+        this.kafkaCluster = new EmbeddedKafkaCluster(numBrokers, brokerProps, additionalKafkaClusterClientConfigs);
         this.connectCluster = new LinkedHashSet<>();
         this.numInitialWorkers = numWorkers;
         this.maskExitProcedures = maskExitProcedures;
@@ -217,6 +218,16 @@ public class EmbeddedConnectCluster {
             log.error("Could not stop connect", e);
             throw new RuntimeException("Could not stop worker", e);
         }
+    }
+
+    /**
+     * Set a new timeout for REST requests to each worker in the cluster. Useful if a request
+     * is expected to block, since the time spent awaiting that request can be reduced
+     * and test runtime bloat can be avoided.
+     * @param requestTimeoutMs the new timeout in milliseconds; must be positive
+     */
+    public void requestTimeout(long requestTimeoutMs) {
+        connectCluster.forEach(worker -> worker.requestTimeout(requestTimeoutMs));
     }
 
     /**
@@ -798,6 +809,8 @@ public class EmbeddedConnectCluster {
         private Properties brokerProps = DEFAULT_BROKER_CONFIG;
         private boolean maskExitProcedures = true;
 
+        private Map<String, String> clientConfigs = new HashMap<>();
+
         public Builder name(String name) {
             this.name = name;
             return this;
@@ -823,6 +836,11 @@ public class EmbeddedConnectCluster {
             return this;
         }
 
+        public Builder clientConfigs(Map<String, String> clientConfigs) {
+            this.clientConfigs.putAll(clientConfigs);
+            return this;
+        }
+
         /**
          * In the event of ungraceful shutdown, embedded clusters call exit or halt with non-zero
          * exit statuses. Exiting with a non-zero status forces a test to fail and is hard to
@@ -842,7 +860,7 @@ public class EmbeddedConnectCluster {
 
         public EmbeddedConnectCluster build() {
             return new EmbeddedConnectCluster(name, workerProps, numWorkers, numBrokers,
-                    brokerProps, maskExitProcedures);
+                    brokerProps, maskExitProcedures, clientConfigs);
         }
     }
 

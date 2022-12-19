@@ -346,6 +346,7 @@ public class Fetcher<K, V> implements Closeable {
                             FetchSessionHandler handler = sessionHandler(fetchTarget.id());
                             if (handler != null) {
                                 handler.handleError(e);
+                                handler.sessionTopicPartitions().forEach(subscriptions::clearPreferredReadReplica);
                             }
                         } finally {
                             nodesWithPendingFetchRequests.remove(fetchTarget.id());
@@ -1154,7 +1155,9 @@ public class Fetcher<K, V> implements Closeable {
             } else {
                 log.trace("Not fetching from {} for partition {} since it is marked offline or is missing from our metadata," +
                           " using the leader instead.", nodeId, partition);
-                subscriptions.clearPreferredReadReplica(partition);
+                // Note that this condition may happen due to stale metadata, so we clear preferred replica and
+                // refresh metadata.
+                requestMetadataUpdate(partition);
                 return leaderReplica;
             }
         } else {
@@ -1201,7 +1204,7 @@ public class Fetcher<K, V> implements Closeable {
                 continue;
             }
 
-            // Use the preferred read replica if set, otherwise the position's leader
+            // Use the preferred read replica if set, otherwise the partition's leader
             Node node = selectReadReplica(partition, leaderOpt.get(), currentTimeMs);
             if (client.isUnavailable(node)) {
                 client.maybeThrowAuthFailure(node);
@@ -1335,16 +1338,16 @@ public class Fetcher<K, V> implements Closeable {
                        error == Errors.FENCED_LEADER_EPOCH ||
                        error == Errors.OFFSET_NOT_AVAILABLE) {
                 log.debug("Error in fetch for partition {}: {}", tp, error.exceptionName());
-                this.metadata.requestUpdate();
+                requestMetadataUpdate(tp);
             } else if (error == Errors.UNKNOWN_TOPIC_OR_PARTITION) {
                 log.warn("Received unknown topic or partition error in fetch for partition {}", tp);
-                this.metadata.requestUpdate();
+                requestMetadataUpdate(tp);
             } else if (error == Errors.UNKNOWN_TOPIC_ID) {
                 log.warn("Received unknown topic ID error in fetch for partition {}", tp);
-                this.metadata.requestUpdate();
+                requestMetadataUpdate(tp);
             } else if (error == Errors.INCONSISTENT_TOPIC_ID) {
                 log.warn("Received inconsistent topic ID error in fetch for partition {}", tp);
-                this.metadata.requestUpdate();
+                requestMetadataUpdate(tp);
             } else if (error == Errors.OFFSET_OUT_OF_RANGE) {
                 Optional<Integer> clearedReplicaId = subscriptions.clearPreferredReadReplica(tp);
                 if (!clearedReplicaId.isPresent()) {
@@ -1866,12 +1869,11 @@ public class Fetcher<K, V> implements Closeable {
                 for (TopicPartition tp : newAssignedPartitions) {
                     if (!this.assignedPartitions.contains(tp)) {
                         MetricName metricName = partitionPreferredReadReplicaMetricName(tp);
-                        if (metrics.metric(metricName) == null) {
-                            metrics.addMetric(
-                                metricName,
-                                (Gauge<Integer>) (config, now) -> subscription.preferredReadReplica(tp, 0L).orElse(-1)
-                            );
-                        }
+                        metrics.addMetricIfAbsent(
+                            metricName,
+                            null,
+                            (Gauge<Integer>) (config, now) -> subscription.preferredReadReplica(tp, 0L).orElse(-1)
+                        );
                     }
                 }
 
@@ -1943,6 +1945,11 @@ public class Fetcher<K, V> implements Closeable {
 
     private Set<String> topicsForPartitions(Collection<TopicPartition> partitions) {
         return partitions.stream().map(TopicPartition::topic).collect(Collectors.toSet());
+    }
+
+    private void requestMetadataUpdate(TopicPartition topicPartition) {
+        this.metadata.requestUpdate();
+        this.subscriptions.clearPreferredReadReplica(topicPartition);
     }
 
 }

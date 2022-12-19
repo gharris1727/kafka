@@ -22,8 +22,22 @@ import kafka.server.metadata.{KRaftMetadataCache, ZkMetadataCache}
 import org.apache.kafka.common.message.{MetadataResponseData, UpdateMetadataRequestData}
 import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.{Cluster, Node, TopicPartition, Uuid}
+import org.apache.kafka.server.common.MetadataVersion
 
 import java.util
+
+case class FinalizedFeaturesAndEpoch(features: Map[String, Short], epoch: Long) {
+  override def toString(): String = {
+    s"FinalizedFeaturesAndEpoch(features=$features, epoch=$epoch)"
+  }
+}
+
+sealed trait CachedControllerId {
+  val id: Int
+}
+
+case class ZkCachedControllerId(id: Int) extends CachedControllerId
+case class KRaftCachedControllerId(id: Int) extends CachedControllerId
 
 trait MetadataCache {
 
@@ -85,18 +99,29 @@ trait MetadataCache {
 
   def getPartitionReplicaEndpoints(tp: TopicPartition, listenerName: ListenerName): Map[Int, Node]
 
-  def getControllerId: Option[Int]
+  def getControllerId: Option[CachedControllerId]
 
   def getClusterMetadata(clusterId: String, listenerName: ListenerName): Cluster
 
   def contains(topic: String): Boolean
 
   def contains(tp: TopicPartition): Boolean
+
+  def metadataVersion(): MetadataVersion
+
+  def features(): FinalizedFeaturesAndEpoch
+
+  def getRandomAliveBrokerId: Option[Int]
 }
 
 object MetadataCache {
-  def zkMetadataCache(brokerId: Int): ZkMetadataCache = {
-    new ZkMetadataCache(brokerId)
+  def zkMetadataCache(brokerId: Int,
+                      metadataVersion: MetadataVersion,
+                      brokerFeatures: BrokerFeatures = BrokerFeatures.createEmpty(),
+                      kraftControllerNodes: collection.Seq[Node] = null)
+  : ZkMetadataCache = {
+    new ZkMetadataCache(brokerId, metadataVersion, brokerFeatures,
+      Option(kraftControllerNodes).getOrElse(collection.Seq.empty[Node]))
   }
 
   def kRaftMetadataCache(brokerId: Int): KRaftMetadataCache = {

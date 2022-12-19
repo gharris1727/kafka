@@ -23,7 +23,6 @@ import java.nio.channels.FileChannel
 import java.nio.file.{Files, StandardOpenOption}
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
-
 import kafka.server.LogOffsetMetadata
 import kafka.utils.TestUtils
 import org.apache.kafka.common.TopicPartition
@@ -36,12 +35,12 @@ import org.junit.jupiter.api.{AfterEach, BeforeEach, Test}
 import org.mockito.Mockito.{mock, when}
 
 class ProducerStateManagerTest {
-  private var logDir: File = null
-  private var stateManager: ProducerStateManager = null
+  private var logDir: File = _
+  private var stateManager: ProducerStateManager = _
   private val partition = new TopicPartition("test", 0)
   private val producerId = 1L
   private val maxTransactionTimeoutMs = 5 * 60 * 1000
-  private val maxProducerIdExpirationMs = 60 * 60 * 1000
+  private val producerStateManagerConfig = new ProducerStateManagerConfig(kafka.server.Defaults.ProducerIdExpirationMs)
   private val lateTransactionTimeoutMs = maxTransactionTimeoutMs + ProducerStateManager.LateTransactionBufferMs
   private val time = new MockTime
 
@@ -49,7 +48,7 @@ class ProducerStateManagerTest {
   def setUp(): Unit = {
     logDir = TestUtils.tempDir()
     stateManager = new ProducerStateManager(partition, logDir, maxTransactionTimeoutMs,
-      maxProducerIdExpirationMs, time)
+      producerStateManagerConfig, time)
   }
 
   @AfterEach
@@ -322,7 +321,7 @@ class ProducerStateManagerTest {
 
     // After reloading from the snapshot, the transaction should still be considered late
     val reloadedStateManager = new ProducerStateManager(partition, logDir, maxTransactionTimeoutMs,
-      maxProducerIdExpirationMs, time)
+      producerStateManagerConfig, time)
     reloadedStateManager.truncateAndReload(logStartOffset = 0L,
       logEndOffset = stateManager.mapEndOffset, currentTimeMs = time.milliseconds())
     assertTrue(reloadedStateManager.hasLateTransaction(time.milliseconds()))
@@ -565,7 +564,7 @@ class ProducerStateManagerTest {
 
     stateManager.takeSnapshot()
     val recoveredMapping = new ProducerStateManager(partition, logDir,
-      maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+      maxTransactionTimeoutMs, producerStateManagerConfig, time)
     recoveredMapping.truncateAndReload(0L, 3L, time.milliseconds)
 
     // The snapshot only persists the last appended batch metadata
@@ -589,7 +588,7 @@ class ProducerStateManagerTest {
 
     stateManager.takeSnapshot()
     val recoveredMapping = new ProducerStateManager(partition, logDir,
-      maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+      maxTransactionTimeoutMs, producerStateManagerConfig, time)
     recoveredMapping.truncateAndReload(0L, 3L, time.milliseconds)
 
     // The snapshot only persists the last appended batch metadata
@@ -610,7 +609,7 @@ class ProducerStateManagerTest {
     stateManager.takeSnapshot()
 
     val recoveredMapping = new ProducerStateManager(partition, logDir,
-      maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+      maxTransactionTimeoutMs, producerStateManagerConfig, time)
     recoveredMapping.truncateAndReload(logStartOffset = 0L, logEndOffset = 1L, time.milliseconds)
 
     val lastEntry = recoveredMapping.lastEntry(producerId)
@@ -643,7 +642,7 @@ class ProducerStateManagerTest {
 
     stateManager.takeSnapshot()
     val recoveredMapping = new ProducerStateManager(partition, logDir,
-      maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+      maxTransactionTimeoutMs, producerStateManagerConfig, time)
     recoveredMapping.truncateAndReload(0L, 1L, 70000)
 
     // entry added after recovery. The pid should be expired now, and would not exist in the pid mapping. Hence
@@ -663,7 +662,7 @@ class ProducerStateManagerTest {
 
     stateManager.takeSnapshot()
     val recoveredMapping = new ProducerStateManager(partition, logDir,
-      maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+      maxTransactionTimeoutMs, producerStateManagerConfig, time)
     recoveredMapping.truncateAndReload(0L, 1L, 70000)
 
     val sequence = 2
@@ -742,6 +741,35 @@ class ProducerStateManagerTest {
   }
 
   @Test
+  def testReloadSnapshots(): Unit = {
+    val epoch = 0.toShort
+    append(stateManager, producerId, epoch, 1, 1L)
+    append(stateManager, producerId, epoch, 2, 2L)
+    stateManager.takeSnapshot()
+    val pathAndDataList = logDir.listFiles().map(file => (file.toPath, Files.readAllBytes(file.toPath)))
+
+    append(stateManager, producerId, epoch, 3, 3L)
+    append(stateManager, producerId, epoch, 4, 4L)
+    stateManager.takeSnapshot()
+    assertEquals(2, logDir.listFiles().length)
+    assertEquals(Set(3, 5), currentSnapshotOffsets)
+
+    // Truncate to the range (3, 5), this will delete the earlier snapshot until offset 3.
+    stateManager.truncateAndReload(3, 5, time.milliseconds())
+    assertEquals(1, logDir.listFiles().length)
+    assertEquals(Set(5), currentSnapshotOffsets)
+
+    // Add the snapshot files until offset 3 to the log dir.
+    pathAndDataList.foreach { case (path, data) => Files.write(path, data) }
+    // Cleanup the in-memory snapshots and reload the snapshots from log dir.
+    // It loads the earlier written snapshot files from log dir.
+    stateManager.truncateFullyAndReloadSnapshots()
+
+    assertEquals(Some(3), stateManager.latestSnapshotOffset)
+    assertEquals(Set(3), currentSnapshotOffsets)
+  }
+
+  @Test
   def testFirstUnstableOffsetAfterTruncation(): Unit = {
     val epoch = 0.toShort
     val sequence = 0
@@ -808,7 +836,7 @@ class ProducerStateManagerTest {
     val epoch = 5.toShort
     val sequence = 37
     append(stateManager, producerId, epoch, sequence, 1L)
-    time.sleep(maxProducerIdExpirationMs + 1)
+    time.sleep(producerStateManagerConfig.producerIdExpirationMs + 1)
     stateManager.removeExpiredProducers(time.milliseconds)
     append(stateManager, producerId, epoch, sequence + 1, 2L)
     assertEquals(1, stateManager.activeProducers.size)
@@ -858,7 +886,7 @@ class ProducerStateManagerTest {
     append(stateManager, producerId, epoch, sequence, offset = 99, isTransactional = true)
     assertEquals(Some(99L), stateManager.firstUndecidedOffset)
 
-    time.sleep(maxProducerIdExpirationMs + 1)
+    time.sleep(producerStateManagerConfig.producerIdExpirationMs + 1)
     stateManager.removeExpiredProducers(time.milliseconds)
 
     assertTrue(stateManager.lastEntry(producerId).isDefined)
@@ -872,7 +900,7 @@ class ProducerStateManagerTest {
   def testSequenceNotValidatedForGroupMetadataTopic(): Unit = {
     val partition = new TopicPartition(Topic.GROUP_METADATA_TOPIC_NAME, 0)
     val stateManager = new ProducerStateManager(partition, logDir,
-      maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+      maxTransactionTimeoutMs, producerStateManagerConfig, time)
 
     val epoch = 0.toShort
     append(stateManager, producerId, epoch, RecordBatch.NO_SEQUENCE, offset = 99,
@@ -922,7 +950,7 @@ class ProducerStateManagerTest {
     stateManager.takeSnapshot()
 
     val recoveredMapping = new ProducerStateManager(partition, logDir,
-      maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+      maxTransactionTimeoutMs, producerStateManagerConfig, time)
     recoveredMapping.truncateAndReload(0L, 2L, 70000)
 
     // append from old coordinator should be rejected
@@ -975,9 +1003,9 @@ class ProducerStateManagerTest {
     // the broker shutdown cleanly and emitted a snapshot file larger than the base offset of the active segment.
 
     // Create 3 snapshot files at different offsets.
-    UnifiedLog.producerSnapshotFile(logDir, 5).createNewFile() // not stray
-    UnifiedLog.producerSnapshotFile(logDir, 2).createNewFile() // stray
-    UnifiedLog.producerSnapshotFile(logDir, 42).createNewFile() // not stray
+    Files.createFile(UnifiedLog.producerSnapshotFile(logDir, 5).toPath) // not stray
+    Files.createFile(UnifiedLog.producerSnapshotFile(logDir, 2).toPath) // stray
+    Files.createFile(UnifiedLog.producerSnapshotFile(logDir, 42).toPath) // not stray
 
     // claim that we only have one segment with a base offset of 5
     stateManager.removeStraySnapshots(Seq(5))
@@ -995,9 +1023,9 @@ class ProducerStateManagerTest {
     // Snapshots associated with an offset in the list of segment base offsets should remain.
 
     // Create 3 snapshot files at different offsets.
-    UnifiedLog.producerSnapshotFile(logDir, 5).createNewFile() // stray
-    UnifiedLog.producerSnapshotFile(logDir, 2).createNewFile() // stray
-    UnifiedLog.producerSnapshotFile(logDir, 42).createNewFile() // not stray
+    Files.createFile(UnifiedLog.producerSnapshotFile(logDir, 5).toPath) // stray
+    Files.createFile(UnifiedLog.producerSnapshotFile(logDir, 2).toPath) // stray
+    Files.createFile(UnifiedLog.producerSnapshotFile(logDir, 42).toPath) // not stray
 
     stateManager.removeStraySnapshots(Seq(42))
     assertEquals(Seq(42), ProducerStateManager.listSnapshotFiles(logDir).map(_.offset).sorted)
@@ -1009,8 +1037,8 @@ class ProducerStateManagerTest {
    */
   @Test
   def testRemoveAndMarkSnapshotForDeletion(): Unit = {
-    UnifiedLog.producerSnapshotFile(logDir, 5).createNewFile()
-    val manager = new ProducerStateManager(partition, logDir, maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+    Files.createFile(UnifiedLog.producerSnapshotFile(logDir, 5).toPath)
+    val manager = new ProducerStateManager(partition, logDir, maxTransactionTimeoutMs, producerStateManagerConfig, time)
     assertTrue(manager.latestSnapshotOffset.isDefined)
     val snapshot = manager.removeAndMarkSnapshotForDeletion(5).get
     assertTrue(snapshot.file.toPath.toString.endsWith(UnifiedLog.DeletedFileSuffix))
@@ -1027,8 +1055,8 @@ class ProducerStateManagerTest {
   @Test
   def testRemoveAndMarkSnapshotForDeletionAlreadyDeleted(): Unit = {
     val file = UnifiedLog.producerSnapshotFile(logDir, 5)
-    file.createNewFile()
-    val manager = new ProducerStateManager(partition, logDir, maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+    Files.createFile(file.toPath)
+    val manager = new ProducerStateManager(partition, logDir, maxTransactionTimeoutMs, producerStateManagerConfig, time)
     assertTrue(manager.latestSnapshotOffset.isDefined)
     Files.delete(file.toPath)
     assertTrue(manager.removeAndMarkSnapshotForDeletion(5).isEmpty)
@@ -1058,7 +1086,7 @@ class ProducerStateManagerTest {
 
     // Ensure that the truncated snapshot is deleted and producer state is loaded from the previous snapshot
     val reloadedStateManager = new ProducerStateManager(partition, logDir,
-      maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+      maxTransactionTimeoutMs, producerStateManagerConfig, time)
     reloadedStateManager.truncateAndReload(0L, 20L, time.milliseconds())
     assertFalse(snapshotToTruncate.exists())
 

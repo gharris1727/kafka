@@ -22,17 +22,18 @@ import com.yammer.metrics.core.MetricName
 import java.io.{File, IOException}
 import java.nio.file.Files
 import java.util.Optional
-import java.util.concurrent.TimeUnit
-import kafka.api.{ApiVersion, KAFKA_0_10_0_IV0}
+import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap, TimeUnit}
 import kafka.common.{LongRef, OffsetsOutOfOrderException, UnexpectedAppendOffsetException}
 import kafka.log.AppendOrigin.RaftLeader
+import kafka.log.remote.RemoteLogManager
 import kafka.message.{BrokerCompressionCodec, CompressionCodec, NoCompressionCodec}
 import kafka.metrics.KafkaMetricsGroup
+import kafka.server._
 import kafka.server.checkpoints.LeaderEpochCheckpointFile
 import kafka.server.epoch.LeaderEpochFileCache
-import kafka.server.{BrokerTopicStats, FetchDataInfo, FetchHighWatermark, FetchIsolation, FetchLogEnd, FetchTxnCommitted, LogDirFailureChannel, LogOffsetMetadata, OffsetAndEpoch, PartitionMetadataFile, RequestLocal}
 import kafka.utils._
 import org.apache.kafka.common.errors._
+import org.apache.kafka.common.internals.Topic
 import org.apache.kafka.common.message.{DescribeProducersResponseData, FetchResponseData}
 import org.apache.kafka.common.record.FileRecords.TimestampAndOffset
 import org.apache.kafka.common.record._
@@ -41,11 +42,14 @@ import org.apache.kafka.common.requests.OffsetsForLeaderEpochResponse.UNDEFINED_
 import org.apache.kafka.common.requests.ProduceResponse.RecordError
 import org.apache.kafka.common.utils.{Time, Utils}
 import org.apache.kafka.common.{InvalidRecordException, KafkaException, TopicPartition, Uuid}
+import org.apache.kafka.server.common.MetadataVersion
+import org.apache.kafka.server.common.MetadataVersion.IBP_0_10_0_IV0
+import org.apache.kafka.server.log.remote.metadata.storage.TopicBasedRemoteLogMetadataManagerConfig
 
 import scala.annotation.nowarn
-import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ListBuffer
 import scala.collection.{Seq, immutable, mutable}
+import scala.jdk.CollectionConverters._
 
 object LogAppendInfo {
   val UnknownLogAppendInfo = LogAppendInfo(None, -1, None, RecordBatch.NO_TIMESTAMP, -1L, RecordBatch.NO_TIMESTAMP, -1L,
@@ -146,7 +150,7 @@ case class LogOffsetSnapshot(logStartOffset: Long,
                              lastStableOffset: LogOffsetMetadata)
 
 /**
- * Another container which is used for lower level reads using  [[kafka.cluster.Partition.readRecords()]].
+ * Another container which is used for lower level reads using  [[kafka.cluster.Partition.fetchRecords()]].
  */
 case class LogReadInfo(fetchedData: FetchDataInfo,
                        divergingEpoch: Option[FetchResponseData.EpochEndOffset],
@@ -248,6 +252,8 @@ case object SnapshotGenerated extends LogStartOffsetIncrementReason {
  *                                  is downgraded below 2.8, a topic ID may be lost and a new ID generated upon re-upgrade.
  *                                  If the inter-broker protocol version on a ZK cluster is below 2.8, partition.metadata
  *                                  will be deleted to avoid ID conflicts upon re-upgrade.
+ * @param remoteStorageSystemEnable flag to indicate whether the system level remote log storage is enabled or not.
+ * @param remoteLogManager          Optional RemoteLogManager instance if it exists.
  */
 @threadsafe
 class UnifiedLog(@volatile var logStartOffset: Long,
@@ -257,7 +263,9 @@ class UnifiedLog(@volatile var logStartOffset: Long,
                  @volatile var leaderEpochCache: Option[LeaderEpochFileCache],
                  val producerStateManager: ProducerStateManager,
                  @volatile private var _topicId: Option[Uuid],
-                 val keepPartitionMetadataFile: Boolean) extends Logging with KafkaMetricsGroup {
+                 val keepPartitionMetadataFile: Boolean,
+                 val remoteStorageSystemEnable: Boolean = false,
+                 remoteLogManager: Option[RemoteLogManager] = None) extends Logging with KafkaMetricsGroup {
 
   import kafka.log.UnifiedLog._
 
@@ -286,13 +294,26 @@ class UnifiedLog(@volatile var logStartOffset: Long,
    */
   @volatile private var highWatermarkMetadata: LogOffsetMetadata = LogOffsetMetadata(logStartOffset)
 
-  @volatile var partitionMetadataFile : PartitionMetadataFile = null
+  @volatile var partitionMetadataFile: Option[PartitionMetadataFile] = None
+
+  @volatile private[kafka] var _localLogStartOffset: Long = logStartOffset
+
+  def localLogStartOffset(): Long = _localLogStartOffset
 
   locally {
     initializePartitionMetadata()
     updateLogStartOffset(logStartOffset)
     maybeIncrementFirstUnstableOffset()
     initializeTopicId()
+  }
+
+  def remoteLogEnabled(): Boolean = {
+    // Remote log is enabled only for non-compact and non-internal topics
+    remoteStorageSystemEnable &&
+      !(config.compact || Topic.isInternal(topicPartition.topic())
+        || TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_NAME.equals(topicPartition.topic())
+        || Topic.CLUSTER_METADATA_TOPIC_NAME.equals(topicPartition.topic())) &&
+      config.remoteLogConfig.remoteStorageEnable
   }
 
   /**
@@ -306,9 +327,12 @@ class UnifiedLog(@volatile var logStartOffset: Long,
    *   - Otherwise set _topicId to None
    */
   def initializeTopicId(): Unit =  {
-    if (partitionMetadataFile.exists()) {
+    val partMetadataFile = partitionMetadataFile.getOrElse(
+      throw new KafkaException("The partitionMetadataFile should have been initialized"))
+
+    if (partMetadataFile.exists()) {
       if (keepPartitionMetadataFile) {
-        val fileTopicId = partitionMetadataFile.read().topicId
+        val fileTopicId = partMetadataFile.read().topicId
         if (_topicId.isDefined && !_topicId.contains(fileTopicId))
           throw new InconsistentTopicIdException(s"Tried to assign topic ID $topicId to log for topic partition $topicPartition," +
             s"but log already contained topic ID $fileTopicId")
@@ -316,14 +340,14 @@ class UnifiedLog(@volatile var logStartOffset: Long,
         _topicId = Some(fileTopicId)
 
       } else {
-        try partitionMetadataFile.delete()
+        try partMetadataFile.delete()
         catch {
           case e: IOException =>
-            error(s"Error while trying to delete partition metadata file ${partitionMetadataFile}", e)
+            error(s"Error while trying to delete partition metadata file ${partMetadataFile}", e)
         }
       }
     } else if (keepPartitionMetadataFile) {
-      _topicId.foreach(partitionMetadataFile.record)
+      _topicId.foreach(partMetadataFile.record)
       scheduler.schedule("flush-metadata-file", maybeFlushMetadataFile)
     } else {
       // We want to keep the file and the in-memory topic ID in sync.
@@ -369,8 +393,7 @@ class UnifiedLog(@volatile var logStartOffset: Long,
    * Update the high watermark to a new offset. The new high watermark will be lower
    * bounded by the log start offset and upper bounded by the log end offset.
    *
-   * This is intended to be called when initializing the high watermark or when updating
-   * it on a follower after receiving a Fetch response from the leader.
+   * This is intended to be called by the leader when initializing the high watermark.
    *
    * @param hw the suggested new value for the high watermark
    * @return the updated high watermark offset
@@ -425,6 +448,27 @@ class UnifiedLog(@volatile var logStartOffset: Long,
         Some(oldHighWatermark)
       } else {
         None
+      }
+    }
+  }
+
+  /**
+   * Update high watermark with a new value. The new high watermark will be lower
+   * bounded by the log start offset and upper bounded by the log end offset.
+   *
+   * This method is intended to be used by the follower to update its high watermark after
+   * replication from the leader.
+   *
+   * @return the new high watermark if the high watermark changed, None otherwise.
+   */
+  def maybeUpdateHighWatermark(hw: Long): Option[Long] = {
+    lock.synchronized {
+      val oldHighWatermark = highWatermarkMetadata
+      updateHighWatermark(LogOffsetMetadata(hw)) match {
+        case oldHighWatermark.messageOffset =>
+          None
+        case newHighWatermark =>
+          Some(newHighWatermark)
       }
     }
   }
@@ -550,15 +594,21 @@ class UnifiedLog(@volatile var logStartOffset: Long,
     explicitMetricName(pkgStr, "Log", name, tags)
   }
 
+  def loadProducerState(lastOffset: Long): Unit = lock synchronized {
+    rebuildProducerState(lastOffset, producerStateManager)
+    maybeIncrementFirstUnstableOffset()
+    updateHighWatermark(localLog.logEndOffsetMetadata)
+  }
+
   private def recordVersion: RecordVersion = config.recordVersion
 
   private def initializePartitionMetadata(): Unit = lock synchronized {
     val partitionMetadata = PartitionMetadataFile.newFile(dir)
-    partitionMetadataFile = new PartitionMetadataFile(partitionMetadata, logDirFailureChannel)
+    partitionMetadataFile = Some(new PartitionMetadataFile(partitionMetadata, logDirFailureChannel))
   }
 
   private def maybeFlushMetadataFile(): Unit = {
-    partitionMetadataFile.maybeFlush()
+    partitionMetadataFile.foreach(_.maybeFlush())
   }
 
   /** Only used for ZK clusters when we update and start using topic IDs on existing topics */
@@ -573,9 +623,14 @@ class UnifiedLog(@volatile var logStartOffset: Long,
       case None =>
         if (keepPartitionMetadataFile) {
           _topicId = Some(topicId)
-          if (!partitionMetadataFile.exists()) {
-            partitionMetadataFile.record(topicId)
-            scheduler.schedule("flush-metadata-file", maybeFlushMetadataFile)
+          partitionMetadataFile match {
+            case Some(partMetadataFile) =>
+              if (!partMetadataFile.exists()) {
+                partMetadataFile.record(topicId)
+                scheduler.schedule("flush-metadata-file", maybeFlushMetadataFile)
+              }
+            case _ => warn(s"The topic id $topicId will not be persisted to the partition metadata file " +
+              "since the partition is deleted")
           }
         }
     }
@@ -674,21 +729,29 @@ class UnifiedLog(@volatile var logStartOffset: Long,
   }
 
   /**
-   * Rename the directory of the local log
+   * Rename the directory of the local log. If the log's directory is being renamed for async deletion due to a
+   * StopReplica request, then the shouldReinitialize parameter should be set to false, otherwise it should be set to true.
    *
+   * @param name The new name that this log's directory is being renamed to
+   * @param shouldReinitialize Whether the log's metadata should be reinitialized after renaming
    * @throws KafkaStorageException if rename fails
    */
-  def renameDir(name: String): Unit = {
+  def renameDir(name: String, shouldReinitialize: Boolean): Unit = {
     lock synchronized {
       maybeHandleIOException(s"Error while renaming dir for $topicPartition in log dir ${dir.getParent}") {
         // Flush partitionMetadata file before initializing again
         maybeFlushMetadataFile()
         if (localLog.renameDir(name)) {
           producerStateManager.updateParentDir(dir)
-          // re-initialize leader epoch cache so that LeaderEpochCheckpointFile.checkpoint can correctly reference
-          // the checkpoint file in renamed log directory
-          initializeLeaderEpochCache()
-          initializePartitionMetadata()
+          if (shouldReinitialize) {
+            // re-initialize leader epoch cache so that LeaderEpochCheckpointFile.checkpoint can correctly reference
+            // the checkpoint file in renamed log directory
+            initializeLeaderEpochCache()
+            initializePartitionMetadata()
+          } else {
+            leaderEpochCache = None
+            partitionMetadataFile = None
+          }
         }
       }
     }
@@ -717,7 +780,7 @@ class UnifiedLog(@volatile var logStartOffset: Long,
   def appendAsLeader(records: MemoryRecords,
                      leaderEpoch: Int,
                      origin: AppendOrigin = AppendOrigin.Client,
-                     interBrokerProtocolVersion: ApiVersion = ApiVersion.latestVersion,
+                     interBrokerProtocolVersion: MetadataVersion = MetadataVersion.latest,
                      requestLocal: RequestLocal = RequestLocal.NoCaching): LogAppendInfo = {
     val validateAndAssignOffsets = origin != AppendOrigin.RaftLeader
     append(records, origin, interBrokerProtocolVersion, validateAndAssignOffsets, leaderEpoch, Some(requestLocal), ignoreRecordSize = false)
@@ -733,7 +796,7 @@ class UnifiedLog(@volatile var logStartOffset: Long,
   def appendAsFollower(records: MemoryRecords): LogAppendInfo = {
     append(records,
       origin = AppendOrigin.Replication,
-      interBrokerProtocolVersion = ApiVersion.latestVersion,
+      interBrokerProtocolVersion = MetadataVersion.latest,
       validateAndAssignOffsets = false,
       leaderEpoch = -1,
       None,
@@ -761,7 +824,7 @@ class UnifiedLog(@volatile var logStartOffset: Long,
    */
   private def append(records: MemoryRecords,
                      origin: AppendOrigin,
-                     interBrokerProtocolVersion: ApiVersion,
+                     interBrokerProtocolVersion: MetadataVersion,
                      validateAndAssignOffsets: Boolean,
                      leaderEpoch: Int,
                      requestLocal: Option[RequestLocal],
@@ -1002,6 +1065,7 @@ class UnifiedLog(@volatile var logStartOffset: Long,
         if (newLogStartOffset > logStartOffset) {
           updatedLogStartOffset = true
           updateLogStartOffset(newLogStartOffset)
+          _localLogStartOffset = newLogStartOffset
           info(s"Incremented log start offset to $newLogStartOffset due to $reason")
           leaderEpochCache.foreach(_.truncateFromStart(logStartOffset))
           producerStateManager.onLogStartOffsetIncremented(newLogStartOffset)
@@ -1225,15 +1289,17 @@ class UnifiedLog(@volatile var logStartOffset: Long,
     maybeHandleIOException(s"Error while fetching offset by timestamp for $topicPartition in dir ${dir.getParent}") {
       debug(s"Searching offset for timestamp $targetTimestamp")
 
-      if (config.messageFormatVersion < KAFKA_0_10_0_IV0 &&
+      if (config.messageFormatVersion.isLessThan(IBP_0_10_0_IV0) &&
         targetTimestamp != ListOffsetsRequest.EARLIEST_TIMESTAMP &&
+        targetTimestamp != ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP &&
         targetTimestamp != ListOffsetsRequest.LATEST_TIMESTAMP)
         throw new UnsupportedForMessageFormatException(s"Cannot search offsets based on timestamp because message format version " +
           s"for partition $topicPartition is ${config.messageFormatVersion} which is earlier than the minimum " +
-          s"required version $KAFKA_0_10_0_IV0")
+          s"required version $IBP_0_10_0_IV0")
 
       // For the earliest and latest, we do not need to return the timestamp.
-      if (targetTimestamp == ListOffsetsRequest.EARLIEST_TIMESTAMP) {
+      if (targetTimestamp == ListOffsetsRequest.EARLIEST_TIMESTAMP ||
+        (!remoteLogEnabled() && targetTimestamp == ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP)) {
         // The first cached epoch usually corresponds to the log start offset, but we have to verify this since
         // it may not be true following a message format version bump as the epoch will not be available for
         // log entries written in the older format.
@@ -1243,6 +1309,15 @@ class UnifiedLog(@volatile var logStartOffset: Long,
           case _ => Optional.empty[Integer]()
         }
         Some(new TimestampAndOffset(RecordBatch.NO_TIMESTAMP, logStartOffset, epochOpt))
+      } else if (targetTimestamp == ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP) {
+        val curLocalLogStartOffset = localLogStartOffset()
+        val earliestLocalLogEpochEntry = leaderEpochCache.flatMap(cache =>
+          cache.epochForOffset(curLocalLogStartOffset).flatMap(cache.epochEntry))
+        val epochOpt = earliestLocalLogEpochEntry match {
+          case Some(entry) if entry.startOffset <= curLocalLogStartOffset => Optional.of[Integer](entry.epoch)
+          case _ => Optional.empty[Integer]()
+        }
+        Some(new TimestampAndOffset(RecordBatch.NO_TIMESTAMP, curLocalLogStartOffset, epochOpt))
       } else if (targetTimestamp == ListOffsetsRequest.LATEST_TIMESTAMP) {
         val latestEpochOpt = leaderEpochCache.flatMap(_.latestEpoch).map(_.asInstanceOf[Integer])
         val epochOptional = Optional.ofNullable(latestEpochOpt.orNull)
@@ -1259,12 +1334,30 @@ class UnifiedLog(@volatile var logStartOffset: Long,
           latestTimestampAndOffset.offset,
           epochOptional))
       } else {
-        // Cache to avoid race conditions. `toBuffer` is faster than most alternatives and provides
-        // constant time access while being safe to use with concurrent collections unlike `toArray`.
-        val segmentsCopy = logSegments.toBuffer
         // We need to search the first segment whose largest timestamp is >= the target timestamp if there is one.
-        val targetSeg = segmentsCopy.find(_.largestTimestamp >= targetTimestamp)
-        targetSeg.flatMap(_.findOffsetByTimestamp(targetTimestamp, logStartOffset))
+        val remoteOffset = if (remoteLogEnabled()) {
+          if (remoteLogManager.isEmpty) {
+            throw new KafkaException("RemoteLogManager is empty even though the remote log storage is enabled.");
+          }
+          if (recordVersion.value < RecordVersion.V2.value) {
+            throw new KafkaException("Tiered storage is supported only with versions supporting leader epochs, that means RecordVersion must be >= 2.")
+          }
+
+          remoteLogManager.get.findOffsetByTimestamp(topicPartition, targetTimestamp, logStartOffset, leaderEpochCache.get)
+        } else None
+
+        if (remoteOffset.nonEmpty) {
+          remoteOffset
+        } else {
+          // If it is not found in remote storage, search in the local storage starting with local log start offset.
+
+          // Cache to avoid race conditions. `toBuffer` is faster than most alternatives and provides
+          // constant time access while being safe to use with concurrent collections unlike `toArray`.
+          val segmentsCopy = logSegments.toBuffer
+
+          val targetSeg = segmentsCopy.find(_.largestTimestamp >= targetTimestamp)
+          targetSeg.flatMap(_.findOffsetByTimestamp(targetTimestamp, _localLogStartOffset))
+        }
       }
     }
   }
@@ -1291,6 +1384,8 @@ class UnifiedLog(@volatile var logStartOffset: Long,
       case ListOffsetsRequest.LATEST_TIMESTAMP =>
         startIndex = offsetTimeArray.length - 1
       case ListOffsetsRequest.EARLIEST_TIMESTAMP =>
+        startIndex = 0
+      case ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP =>
         startIndex = 0
       case _ =>
         var isFound = false
@@ -1355,15 +1450,19 @@ class UnifiedLog(@volatile var logStartOffset: Long,
       val numToDelete = deletable.size
       if (numToDelete > 0) {
         // we must always have at least one segment, so if we are going to delete all the segments, create a new one first
-        if (localLog.segments.numberOfSegments == numToDelete)
-          roll()
-        lock synchronized {
-          localLog.checkIfMemoryMappedBufferClosed()
-          // remove the segments for lookups
-          localLog.removeAndDeleteSegments(deletable, asyncDelete = true, reason)
-          deleteProducerSnapshots(deletable, asyncDelete = true)
-          maybeIncrementLogStartOffset(localLog.segments.firstSegmentBaseOffset.get, SegmentDeletion)
+        var segmentsToDelete = deletable
+        if (localLog.segments.numberOfSegments == numToDelete) {
+          val newSegment = roll()
+          if (deletable.last.baseOffset == newSegment.baseOffset) {
+            warn(s"Empty active segment at ${deletable.last.baseOffset} was deleted and recreated due to $reason")
+            segmentsToDelete = deletable.dropRight(1)
+          }
         }
+        localLog.checkIfMemoryMappedBufferClosed()
+        // remove the segments for lookups
+        localLog.removeAndDeleteSegments(segmentsToDelete, asyncDelete = true, reason)
+        deleteProducerSnapshots(deletable, asyncDelete = true)
+        maybeIncrementLogStartOffset(localLog.segments.firstSegmentBaseOffset.get, SegmentDeletion)
       }
       numToDelete
     }
@@ -1777,12 +1876,15 @@ object UnifiedLog extends Logging {
             brokerTopicStats: BrokerTopicStats,
             time: Time,
             maxTransactionTimeoutMs: Int,
-            maxProducerIdExpirationMs: Int,
+            producerStateManagerConfig: ProducerStateManagerConfig,
             producerIdExpirationCheckIntervalMs: Int,
             logDirFailureChannel: LogDirFailureChannel,
             lastShutdownClean: Boolean = true,
             topicId: Option[Uuid],
-            keepPartitionMetadataFile: Boolean): UnifiedLog = {
+            keepPartitionMetadataFile: Boolean,
+            numRemainingSegments: ConcurrentMap[String, Int] = new ConcurrentHashMap[String, Int],
+            remoteStorageSystemEnable: Boolean = false,
+            remoteLogManager: Option[RemoteLogManager] = None): UnifiedLog = {
     // create the log directory if it doesn't exist
     Files.createDirectories(dir.toPath)
     val topicPartition = UnifiedLog.parseTopicPartitionName(dir)
@@ -1794,7 +1896,7 @@ object UnifiedLog extends Logging {
       config.recordVersion,
       s"[UnifiedLog partition=$topicPartition, dir=${dir.getParent}] ")
     val producerStateManager = new ProducerStateManager(topicPartition, dir,
-      maxTransactionTimeoutMs, maxProducerIdExpirationMs, time)
+      maxTransactionTimeoutMs, producerStateManagerConfig, time)
     val offsets = new LogLoader(
       dir,
       topicPartition,
@@ -1807,7 +1909,8 @@ object UnifiedLog extends Logging {
       logStartOffset,
       recoveryPoint,
       leaderEpochCache,
-      producerStateManager
+      producerStateManager,
+      numRemainingSegments
     ).load()
     val localLog = new LocalLog(dir, config, segments, offsets.recoveryPoint,
       offsets.nextOffsetMetadata, scheduler, time, topicPartition, logDirFailureChannel)
@@ -1818,7 +1921,9 @@ object UnifiedLog extends Logging {
       leaderEpochCache,
       producerStateManager,
       topicId,
-      keepPartitionMetadataFile)
+      keepPartitionMetadataFile,
+      remoteStorageSystemEnable,
+      remoteLogManager)
   }
 
   def logFile(dir: File, offset: Long, suffix: String = ""): File = LocalLog.logFile(dir, offset, suffix)

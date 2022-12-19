@@ -60,7 +60,7 @@ public class MirrorSourceTask extends SourceTask {
     private long maxOffsetLag;
     private Map<TopicPartition, PartitionState> partitionStates;
     private ReplicationPolicy replicationPolicy;
-    private MirrorMetrics metrics;
+    private MirrorSourceMetrics metrics;
     private boolean stopping = false;
     private Semaphore outstandingOffsetSyncs;
     private Semaphore consumerAccess;
@@ -68,19 +68,20 @@ public class MirrorSourceTask extends SourceTask {
     public MirrorSourceTask() {}
 
     // for testing
-    MirrorSourceTask(KafkaConsumer<byte[], byte[]> consumer, MirrorMetrics metrics, String sourceClusterAlias,
-                     ReplicationPolicy replicationPolicy, long maxOffsetLag) {
+    MirrorSourceTask(KafkaConsumer<byte[], byte[]> consumer, MirrorSourceMetrics metrics, String sourceClusterAlias,
+                     ReplicationPolicy replicationPolicy, long maxOffsetLag, KafkaProducer<byte[], byte[]> producer) {
         this.consumer = consumer;
         this.metrics = metrics;
         this.sourceClusterAlias = sourceClusterAlias;
         this.replicationPolicy = replicationPolicy;
         this.maxOffsetLag = maxOffsetLag;
         consumerAccess = new Semaphore(1);
+        this.offsetProducer = producer;
     }
 
     @Override
     public void start(Map<String, String> props) {
-        MirrorTaskConfig config = new MirrorTaskConfig(props);
+        MirrorSourceTaskConfig config = new MirrorSourceTaskConfig(props);
         outstandingOffsetSyncs = new Semaphore(MAX_OUTSTANDING_OFFSET_SYNCS);
         consumerAccess = new Semaphore(1);  // let one thread at a time access the consumer
         sourceClusterAlias = config.sourceClusterAlias();
@@ -170,25 +171,25 @@ public class MirrorSourceTask extends SourceTask {
  
     @Override
     public void commitRecord(SourceRecord record, RecordMetadata metadata) {
-        try {
-            if (stopping) {
-                return;
-            }
-            if (!metadata.hasOffset()) {
-                log.error("RecordMetadata has no offset -- can't sync offsets for {}.", record.topic());
-                return;
-            }
-            TopicPartition topicPartition = new TopicPartition(record.topic(), record.kafkaPartition());
-            long latency = System.currentTimeMillis() - record.timestamp();
-            metrics.countRecord(topicPartition);
-            metrics.replicationLatency(topicPartition, latency);
-            TopicPartition sourceTopicPartition = MirrorUtils.unwrapPartition(record.sourcePartition());
-            long upstreamOffset = MirrorUtils.unwrapOffset(record.sourceOffset());
-            long downstreamOffset = metadata.offset();
-            maybeSyncOffsets(sourceTopicPartition, upstreamOffset, downstreamOffset);
-        } catch (Throwable e) {
-            log.warn("Failure committing record.", e);
+        if (stopping) {
+            return;
         }
+        if (metadata == null) {
+            log.debug("No RecordMetadata (source record was probably filtered out during transformation) -- can't sync offsets for {}.", record.topic());
+            return;
+        }
+        if (!metadata.hasOffset()) {
+            log.error("RecordMetadata has no offset -- can't sync offsets for {}.", record.topic());
+            return;
+        }
+        TopicPartition topicPartition = new TopicPartition(record.topic(), record.kafkaPartition());
+        long latency = System.currentTimeMillis() - record.timestamp();
+        metrics.countRecord(topicPartition);
+        metrics.replicationLatency(topicPartition, latency);
+        TopicPartition sourceTopicPartition = MirrorUtils.unwrapPartition(record.sourcePartition());
+        long upstreamOffset = MirrorUtils.unwrapOffset(record.sourceOffset());
+        long downstreamOffset = metadata.offset();
+        maybeSyncOffsets(sourceTopicPartition, upstreamOffset, downstreamOffset);
     }
 
     // updates partition state and sends OffsetSync if necessary
