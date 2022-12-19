@@ -50,6 +50,8 @@ public class MirrorSourceTask extends SourceTask {
 
     private static final Logger log = LoggerFactory.getLogger(MirrorSourceTask.class);
 
+    private static final int MAX_OUTSTANDING_OFFSET_SYNCS = 10;
+
     private KafkaConsumer<byte[], byte[]> consumer;
     private KafkaProducer<byte[], byte[]> offsetProducer;
     private String sourceClusterAlias;
@@ -79,7 +81,7 @@ public class MirrorSourceTask extends SourceTask {
     @Override
     public void start(Map<String, String> props) {
         MirrorTaskConfig config = new MirrorTaskConfig(props);
-        outstandingOffsetSyncs = new Semaphore(config.maxOutstandingSyncs());
+        outstandingOffsetSyncs = new Semaphore(MAX_OUTSTANDING_OFFSET_SYNCS);
         consumerAccess = new Semaphore(1);  // let one thread at a time access the consumer
         sourceClusterAlias = config.sourceClusterAlias();
         metrics = config.metrics();

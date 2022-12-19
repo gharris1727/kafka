@@ -208,10 +208,6 @@ public class MirrorConnectorConfig extends AbstractConfig {
     private static final String OFFSET_SYNCS_TOPIC_LOCATION_DEFAULT = SOURCE_CLUSTER_ALIAS_DEFAULT;
     private static final String OFFSET_SYNCS_TOPIC_LOCATION_DOC = "The location (source/target) of the offset-syncs topic.";
 
-    private static final String OFFSET_SYNCS_OUTSTANDING_MAX = "offset-syncs.outstanding.max";
-    private static final String OFFSET_SYNCS_OUTSTANDING_MAX_DOC = "The maximum outstanding offset syncs";
-    private static final int OFFSET_SYNCS_OUTSTANDING_MAX_DEFAULT = 10;
-
     protected static final String SOURCE_CLUSTER_PREFIX = MirrorMakerConfig.SOURCE_CLUSTER_PREFIX;
     protected static final String TARGET_CLUSTER_PREFIX = MirrorMakerConfig.TARGET_CLUSTER_PREFIX;
     protected static final String SOURCE_PREFIX = MirrorMakerConfig.SOURCE_PREFIX;
@@ -382,10 +378,6 @@ public class MirrorConnectorConfig extends AbstractConfig {
 
     long maxOffsetLag() {
         return getLong(OFFSET_LAG_MAX);
-    }
-
-    int maxOutstandingSyncs() {
-        return getInt(OFFSET_SYNCS_OUTSTANDING_MAX);
     }
 
     Duration emitHeartbeatsInterval() {
@@ -724,12 +716,6 @@ public class MirrorConnectorConfig extends AbstractConfig {
                     CommonClientConfigs.DEFAULT_SECURITY_PROTOCOL,
                     ConfigDef.Importance.MEDIUM,
                     CommonClientConfigs.SECURITY_PROTOCOL_DOC)
-            .define(
-                    OFFSET_SYNCS_OUTSTANDING_MAX,
-                    ConfigDef.Type.INT,
-                    OFFSET_SYNCS_OUTSTANDING_MAX_DEFAULT,
-                    ConfigDef.Importance.LOW,
-                    OFFSET_SYNCS_OUTSTANDING_MAX_DOC)
             .withClientSslSupport()
             .withClientSaslSupport();
 }
