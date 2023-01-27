@@ -393,7 +393,15 @@ public class Plugins {
      * @return the instantiated and configured {@link HeaderConverter}; null if the configuration did not define the specified property
      * @throws ConnectException if the {@link HeaderConverter} implementation class could not be found
      */
-    public HeaderConverter newHeaderConverter(AbstractConfig config, String classPropertyName, ClassLoaderUsage classLoaderUsage) {
+    public IsolatedHeaderConverter newHeaderConverter(AbstractConfig config, String classPropertyName, ClassLoaderUsage classLoaderUsage) {
+        HeaderConverter headerConverter = newRawHeaderConverter(config, classPropertyName, classLoaderUsage);
+        if (headerConverter == null) {
+            return null;
+        }
+        return new IsolatedHeaderConverter(this, headerConverter);
+    }
+
+    HeaderConverter newRawHeaderConverter(AbstractConfig config, String classPropertyName, ClassLoaderUsage classLoaderUsage) {
         Class<? extends HeaderConverter> klass = null;
         switch (classLoaderUsage) {
             case CURRENT_CLASSLOADER:

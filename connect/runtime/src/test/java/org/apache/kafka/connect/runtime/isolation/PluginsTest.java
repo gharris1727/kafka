@@ -116,7 +116,7 @@ public class PluginsTest {
     @Test
     public void shouldInstantiateAndConfigureExplicitlySetHeaderConverterWithCurrentClassLoader() {
         assertNotNull(props.get(WorkerConfig.HEADER_CONVERTER_CLASS_CONFIG));
-        HeaderConverter headerConverter = plugins.newHeaderConverter(config,
+        HeaderConverter headerConverter = plugins.newRawHeaderConverter(config,
                                                                      WorkerConfig.HEADER_CONVERTER_CLASS_CONFIG,
                                                                      ClassLoaderUsage.CURRENT_CLASSLOADER);
         assertNotNull(headerConverter);
@@ -127,7 +127,7 @@ public class PluginsTest {
         assertConverterType(ConverterType.HEADER, this.headerConverter.configs);
         assertEquals("baz", this.headerConverter.configs.get("extra.config"));
 
-        headerConverter = plugins.newHeaderConverter(config,
+        headerConverter = plugins.newRawHeaderConverter(config,
                                                      WorkerConfig.HEADER_CONVERTER_CLASS_CONFIG,
                                                      ClassLoaderUsage.PLUGINS);
         assertNotNull(headerConverter);
@@ -166,12 +166,12 @@ public class PluginsTest {
 
         // Because it's not explicitly set on the supplied configuration, the logic to use the current classloader for the connector
         // will exit immediately, and so this method always returns null
-        HeaderConverter headerConverter = plugins.newHeaderConverter(config,
+        HeaderConverter headerConverter = plugins.newRawHeaderConverter(config,
                                                                      WorkerConfig.HEADER_CONVERTER_CLASS_CONFIG,
                                                                      ClassLoaderUsage.CURRENT_CLASSLOADER);
         assertNull(headerConverter);
         // But we should always find it (or the worker's default) when using the plugins classloader ...
-        headerConverter = plugins.newHeaderConverter(config,
+        headerConverter = plugins.newRawHeaderConverter(config,
                                                      WorkerConfig.HEADER_CONVERTER_CLASS_CONFIG,
                                                      ClassLoaderUsage.PLUGINS);
         assertNotNull(headerConverter);
@@ -367,7 +367,7 @@ public class PluginsTest {
             createConfig();
         }
 
-        HeaderConverter plugin = plugins.newHeaderConverter(
+        HeaderConverter plugin = plugins.newRawHeaderConverter(
             config,
             WorkerConfig.HEADER_CONVERTER_CLASS_CONFIG,
             ClassLoaderUsage.PLUGINS
@@ -498,7 +498,7 @@ public class PluginsTest {
     }
 
     protected void instantiateAndConfigureHeaderConverter(String configPropName) {
-        headerConverter = (TestHeaderConverter) plugins.newHeaderConverter(config, configPropName, ClassLoaderUsage.CURRENT_CLASSLOADER);
+        headerConverter = (TestHeaderConverter) plugins.newRawHeaderConverter(config, configPropName, ClassLoaderUsage.CURRENT_CLASSLOADER);
         assertNotNull(headerConverter);
     }
 
