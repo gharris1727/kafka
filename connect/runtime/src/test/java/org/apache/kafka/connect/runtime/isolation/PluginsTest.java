@@ -324,7 +324,7 @@ public class PluginsTest {
             createConfig();
         }
 
-        Converter plugin = plugins.newConverter(
+        Converter plugin = plugins.newRawConverter(
             config,
             WorkerConfig.KEY_CONVERTER_CLASS_CONFIG,
             ClassLoaderUsage.PLUGINS
@@ -493,7 +493,7 @@ public class PluginsTest {
     }
 
     protected void instantiateAndConfigureConverter(String configPropName, ClassLoaderUsage classLoaderUsage) {
-        converter = (TestConverter) plugins.newConverter(config, configPropName, classLoaderUsage);
+        converter = (TestConverter) plugins.newRawConverter(config, configPropName, classLoaderUsage);
         assertNotNull(converter);
     }
 

@@ -301,7 +301,15 @@ public class Plugins {
      * @return the instantiated and configured {@link Converter}; null if the configuration did not define the specified property
      * @throws ConnectException if the {@link Converter} implementation class could not be found
      */
-    public Converter newConverter(AbstractConfig config, String classPropertyName, ClassLoaderUsage classLoaderUsage) {
+    public IsolatedConverter newConverter(AbstractConfig config, String classPropertyName, ClassLoaderUsage classLoaderUsage) {
+        Converter converter = newRawConverter(config, classPropertyName, classLoaderUsage);
+        if (converter == null) {
+            return null;
+        }
+        return new IsolatedConverter(this, converter);
+    }
+
+    Converter newRawConverter(AbstractConfig config, String classPropertyName, ClassLoaderUsage classLoaderUsage) {
         if (!config.originals().containsKey(classPropertyName)) {
             // This configuration does not define the converter via the specified property name
             return null;
