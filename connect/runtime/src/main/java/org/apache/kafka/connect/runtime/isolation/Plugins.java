@@ -26,7 +26,9 @@ import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.sink.SinkConnector;
+import org.apache.kafka.connect.sink.SinkTask;
 import org.apache.kafka.connect.source.SourceConnector;
+import org.apache.kafka.connect.source.SourceTask;
 import org.apache.kafka.connect.storage.Converter;
 import org.apache.kafka.connect.storage.ConverterConfig;
 import org.apache.kafka.connect.storage.ConverterType;
@@ -275,7 +277,18 @@ public class Plugins {
         return klass;
     }
 
-    public Task newTask(Class<? extends Task> taskClass) {
+    public IsolatedTask<?> newTask(Class<? extends Task> taskClass) {
+        Task task = newRawTask(taskClass);
+        if (task instanceof SourceTask) {
+            return new IsolatedSourceTask(this, (SourceTask) task);
+        } else if (task instanceof SinkTask) {
+            return new IsolatedSinkTask(this, (SinkTask) task);
+        } else {
+            throw new IllegalArgumentException("taskClass must be either a SourceTask or a SinkTask");
+        }
+    }
+
+    Task newRawTask(Class<? extends Task> taskClass) {
         return newPlugin(taskClass);
     }
 
