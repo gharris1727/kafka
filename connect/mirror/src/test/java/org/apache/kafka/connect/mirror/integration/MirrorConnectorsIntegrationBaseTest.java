@@ -310,8 +310,9 @@ public class MirrorConnectorsIntegrationBaseTest {
             Duration.ofMillis(CHECKPOINT_DURATION_MS));
 
         for (int i = 0; i < NUM_PARTITIONS; i++) {
-            assertTrue(backupOffsets.containsKey(new TopicPartition("primary.test-topic-1", i)),
-                   "Offsets not translated downstream to backup cluster. Found: " + backupOffsets);
+            TopicPartition tp = new TopicPartition("primary.test-topic-1", i);
+            assertTrue(backupOffsets.containsKey(tp),
+                   "Offsets not translated downstream to backup cluster. Found: " + backupOffsets + " Missing: " + tp);
         }
 
         // Failover consumer group to backup cluster.
@@ -570,7 +571,8 @@ public class MirrorConnectorsIntegrationBaseTest {
         MirrorClient backupClient = new MirrorClient(mm2Config.clientConfig(BACKUP_CLUSTER_ALIAS));
         waitForCondition(() -> {
             Map<TopicPartition, OffsetAndMetadata> translatedOffsets = backupClient.remoteConsumerOffsets(
-                    consumerGroupName, PRIMARY_CLUSTER_ALIAS, Duration.ofSeconds(30L));
+                    consumerGroupName, PRIMARY_CLUSTER_ALIAS, Duration.ofSeconds(3L));
+            log.info("Backup offsets: {}", translatedOffsets);
             return translatedOffsets.containsKey(remoteTopicPartition(tp1, PRIMARY_CLUSTER_ALIAS)) &&
                    !translatedOffsets.containsKey(remoteTopicPartition(tp2, PRIMARY_CLUSTER_ALIAS));
         }, OFFSET_SYNC_DURATION_MS, "Checkpoints were not emitted correctly to backup cluster");
@@ -580,7 +582,8 @@ public class MirrorConnectorsIntegrationBaseTest {
 
         waitForCondition(() -> {
             Map<TopicPartition, OffsetAndMetadata> translatedOffsets = backupClient.remoteConsumerOffsets(
-                    consumerGroupName, PRIMARY_CLUSTER_ALIAS, Duration.ofSeconds(30L));
+                    consumerGroupName, PRIMARY_CLUSTER_ALIAS, Duration.ofSeconds(3L));
+            log.info("Backup offsets: {}", translatedOffsets);
             return translatedOffsets.containsKey(remoteTopicPartition(tp1, PRIMARY_CLUSTER_ALIAS)) &&
                    translatedOffsets.containsKey(remoteTopicPartition(tp2, PRIMARY_CLUSTER_ALIAS));
         }, OFFSET_SYNC_DURATION_MS, "Checkpoints were not emitted correctly to backup cluster");

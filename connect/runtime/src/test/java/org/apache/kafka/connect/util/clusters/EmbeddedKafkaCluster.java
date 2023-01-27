@@ -38,6 +38,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.KafkaFuture;
@@ -211,7 +212,9 @@ public class EmbeddedKafkaCluster {
 
         for (KafkaServer broker : brokers) {
             try {
-                broker.shutdown();
+                if (broker != null) {
+                    broker.shutdown();
+                }
             } catch (Throwable t) {
                 String msg = String.format("Could not shutdown broker at %s", address(broker));
                 log.error(msg, t);
@@ -222,8 +225,10 @@ public class EmbeddedKafkaCluster {
         if (deleteLogDirs) {
             for (KafkaServer broker : brokers) {
                 try {
-                    log.info("Cleaning up kafka log dirs at {}", broker.config().logDirs());
-                    CoreUtils.delete(broker.config().logDirs());
+                    if (broker != null) {
+                        log.info("Cleaning up kafka log dirs at {}", broker.config().logDirs());
+                        CoreUtils.delete(broker.config().logDirs());
+                    }
                 } catch (Throwable t) {
                     String msg = String.format("Could not clean up log dirs for broker at %s",
                             address(broker));
@@ -235,7 +240,9 @@ public class EmbeddedKafkaCluster {
 
         try {
             if (stopZK) {
-                zookeeper.shutdown();
+                if (zookeeper != null) {
+                    zookeeper.shutdown();
+                }
             }
         } catch (Throwable t) {
             String msg = String.format("Could not shutdown zookeeper at %s", zKConnectString());
@@ -436,7 +443,8 @@ public class EmbeddedKafkaCluster {
         ProducerRecord<byte[], byte[]> msg = new ProducerRecord<>(topic, partition, key == null ? null : key.getBytes(), value == null ? null : value.getBytes());
         try {
             producer.beginTransaction();
-            producer.send(msg).get(DEFAULT_PRODUCE_SEND_DURATION_MS, TimeUnit.MILLISECONDS);
+            RecordMetadata recordMetadata = producer.send(msg).get(DEFAULT_PRODUCE_SEND_DURATION_MS, TimeUnit.MILLISECONDS);
+            log.debug("Produced record to {}-{}", recordMetadata.topic(), recordMetadata.partition());
             producer.commitTransaction();
         } catch (Exception e) {
             throw new KafkaException("Could not produce message: " + msg, e);

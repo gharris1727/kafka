@@ -151,6 +151,7 @@ public class MirrorSourceTask extends SourceTask {
             List<SourceRecord> sourceRecords = new ArrayList<>(records.count());
             for (ConsumerRecord<byte[], byte[]> record : records) {
                 SourceRecord converted = convertRecord(record);
+                log.debug("Read upstream record {} to {}-{}", converted.hashCode(), record.topic(), record.partition());
                 sourceRecords.add(converted);
                 TopicPartition topicPartition = new TopicPartition(converted.topic(), converted.kafkaPartition());
                 metrics.recordAge(topicPartition, System.currentTimeMillis() - record.timestamp());
@@ -181,6 +182,7 @@ public class MirrorSourceTask extends SourceTask {
     @Override
     public void commitRecord(SourceRecord record, RecordMetadata metadata) {
         if (stopping) {
+            log.debug("skipping commitRecord because stopping");
             return;
         }
         if (metadata == null) {
@@ -191,6 +193,8 @@ public class MirrorSourceTask extends SourceTask {
             log.error("RecordMetadata has no offset -- can't sync offsets for {}.", record.topic());
             return;
         }
+        // adding this print de-flakes the test
+        log.debug("Wrote sourceRecord {} to {}-{}", record.hashCode(), metadata.topic(), metadata.partition());
         TopicPartition topicPartition = new TopicPartition(record.topic(), record.kafkaPartition());
         long latency = System.currentTimeMillis() - record.timestamp();
         metrics.countRecord(topicPartition);

@@ -41,6 +41,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tests MM2 replication and failover logic for {@link IdentityReplicationPolicy}.
@@ -52,6 +54,8 @@ import org.junit.jupiter.api.BeforeEach;
  */
 @Tag("integration")
 public class IdentityReplicationIntegrationTest extends MirrorConnectorsIntegrationBaseTest {
+
+    private static final Logger log = LoggerFactory.getLogger(IdentityReplicationIntegrationTest.class);
     @BeforeEach
     public void startClusters() throws Exception {
         super.startClusters(new HashMap<String, String>() {{
@@ -110,8 +114,9 @@ public class IdentityReplicationIntegrationTest extends MirrorConnectorsIntegrat
         Map<TopicPartition, OffsetAndMetadata> backupOffsets = backupClient.remoteConsumerOffsets(consumerGroupName, PRIMARY_CLUSTER_ALIAS,
                 Duration.ofMillis(CHECKPOINT_DURATION_MS));
 
-        assertTrue(backupOffsets.containsKey(
-                new TopicPartition("test-topic-1", 0)), "Offsets not translated downstream to backup cluster. Found: " + backupOffsets);
+        TopicPartition tp = new TopicPartition("test-topic-1", 0);
+        assertTrue(backupOffsets.containsKey(tp),
+                "Offsets not translated downstream to backup cluster. Found: " + backupOffsets + " Missing: " + tp);
 
         // Failover consumer group to backup cluster.
         try (Consumer<byte[], byte[]> primaryConsumer = backup.kafka().createConsumer(Collections.singletonMap("group.id", consumerGroupName))) {
@@ -232,6 +237,9 @@ public class IdentityReplicationIntegrationTest extends MirrorConnectorsIntegrat
         // the size of consumer record should be zero, because the offsets of the same consumer group
         // have been automatically synchronized from primary to backup by the background job, so no
         // more records to consume from the replicated topic by the same consumer group at backup cluster
+        if (!records.isEmpty()) {
+            log.info("Record consumed after offset sync: {}", records.iterator().next());
+        }
         assertEquals(0, records.count(), "consumer record size is not zero");
 
         // now create a new topic in primary cluster

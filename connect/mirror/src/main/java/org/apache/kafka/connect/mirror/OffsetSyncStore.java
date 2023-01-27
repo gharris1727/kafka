@@ -22,6 +22,8 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.utils.Utils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.HashMap;
@@ -32,6 +34,7 @@ import java.util.OptionalLong;
 
 /** Used internally by MirrorMaker. Stores offset syncs and performs offset translation. */
 class OffsetSyncStore implements AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(OffsetSyncStore.class);
     private final KafkaConsumer<byte[], byte[]> consumer;
     private final Map<TopicPartition, OffsetSync> offsetSyncs = new HashMap<>();
     private final TopicPartition offsetSyncTopicPartition;
@@ -54,6 +57,7 @@ class OffsetSyncStore implements AutoCloseable {
         if (offsetSync.isPresent()) {
             if (offsetSync.get().upstreamOffset() > upstreamOffset) {
                 // Offset is too far in the past to translate accurately
+                log.debug("Skipping translation of {} as it is too far in the past {}", upstreamOffset, offsetSync.get());
                 return OptionalLong.of(-1L);
             }
             return OptionalLong.of(offsetSync.get().downstreamOffset());
@@ -78,6 +82,7 @@ class OffsetSyncStore implements AutoCloseable {
 
     protected void handleRecord(ConsumerRecord<byte[], byte[]> record) {
         OffsetSync offsetSync = OffsetSync.deserializeRecord(record);
+        log.debug("Reading offset {}", offsetSync);
         TopicPartition sourceTopicPartition = offsetSync.topicPartition();
         offsetSyncs.put(sourceTopicPartition, offsetSync);
     }

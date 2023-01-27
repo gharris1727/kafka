@@ -159,6 +159,9 @@ public class MirrorCheckpointTask extends SourceTask {
         try {
             long timestamp = System.currentTimeMillis();
             List<Checkpoint> checkpoints = checkpointsForGroup(group);
+            for (Checkpoint checkpoint : checkpoints) {
+                log.debug("Emitting checkpoint {}", checkpoint);
+            }
             checkpointsPerConsumerGroup.put(group, checkpoints);
             return checkpoints.stream()
                 .map(x -> checkpointRecord(x, timestamp))
@@ -184,7 +187,9 @@ public class MirrorCheckpointTask extends SourceTask {
             // short circuit if stopping
             return Collections.emptyMap();
         }
-        return sourceAdminClient.listConsumerGroupOffsets(group).partitionsToOffsetAndMetadata().get();
+        Map<TopicPartition, OffsetAndMetadata> topicPartitionOffsetAndMetadataMap = sourceAdminClient.listConsumerGroupOffsets(group).partitionsToOffsetAndMetadata().get();
+        log.debug("offsets on {}: {}", sourceClusterAlias, topicPartitionOffsetAndMetadataMap);
+        return topicPartitionOffsetAndMetadataMap;
     }
 
     Optional<Checkpoint> checkpoint(String group, TopicPartition topicPartition,
@@ -194,10 +199,12 @@ public class MirrorCheckpointTask extends SourceTask {
             OptionalLong downstreamOffset =
                 offsetSyncStore.translateDownstream(topicPartition, upstreamOffset);
             if (downstreamOffset.isPresent()) {
+                log.debug("checkpoint? YES: {} {} {} = {}", group, topicPartition, offsetAndMetadata, downstreamOffset);
                 return Optional.of(new Checkpoint(group, renameTopicPartition(topicPartition),
                     upstreamOffset, downstreamOffset.getAsLong(), offsetAndMetadata.metadata()));
             }
         }
+        log.debug("checkpoint? NO: {} {} {}", group, topicPartition, offsetAndMetadata);
         return Optional.empty();
     }
 
