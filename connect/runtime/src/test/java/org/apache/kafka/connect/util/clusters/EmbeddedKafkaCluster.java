@@ -31,6 +31,7 @@ import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -179,12 +180,15 @@ public class EmbeddedKafkaCluster {
 
         Map<String, Object> producerProps = new HashMap<>(clientConfigs);
         producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
+        producerProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true");
+        producerProps.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, "embedded-kafka-0");
         if (sslEnabled()) {
             producerProps.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, brokerConfig.get(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG));
             producerProps.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, brokerConfig.get(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG));
             producerProps.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL");
         }
         producer = new KafkaProducer<>(producerProps, new ByteArraySerializer(), new ByteArraySerializer());
+        producer.initTransactions();
     }
 
     public void stopOnlyKafka() {
@@ -431,7 +435,9 @@ public class EmbeddedKafkaCluster {
     public void produce(String topic, Integer partition, String key, String value) {
         ProducerRecord<byte[], byte[]> msg = new ProducerRecord<>(topic, partition, key == null ? null : key.getBytes(), value == null ? null : value.getBytes());
         try {
+            producer.beginTransaction();
             producer.send(msg).get(DEFAULT_PRODUCE_SEND_DURATION_MS, TimeUnit.MILLISECONDS);
+            producer.commitTransaction();
         } catch (Exception e) {
             throw new KafkaException("Could not produce message: " + msg, e);
         }
@@ -631,7 +637,9 @@ public class EmbeddedKafkaCluster {
     }
 
     public KafkaConsumer<byte[], byte[]> createConsumerAndSubscribeTo(Map<String, Object> consumerProps, String... topics) {
-        KafkaConsumer<byte[], byte[]> consumer = createConsumer(consumerProps);
+        Map<String, Object> props = new HashMap<>(consumerProps);
+        props.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
+        KafkaConsumer<byte[], byte[]> consumer = createConsumer(props);
         consumer.subscribe(Arrays.asList(topics));
         return consumer;
     }

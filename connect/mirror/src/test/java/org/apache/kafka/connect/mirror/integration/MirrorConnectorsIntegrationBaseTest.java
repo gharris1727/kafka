@@ -159,6 +159,10 @@ public class MirrorConnectorsIntegrationBaseTest {
         
         primaryBrokerProps.put("auto.create.topics.enable", "false");
         backupBrokerProps.put("auto.create.topics.enable", "false");
+        primaryBrokerProps.put("transaction.state.log.replication.factor", "1");
+        backupBrokerProps.put("transaction.state.log.replication.factor", "1");
+        primaryBrokerProps.put("transaction.state.log.min.isr", "1");
+        backupBrokerProps.put("transaction.state.log.min.isr", "1");
 
         mm2Props.putAll(basicMM2Config());
         mm2Props.putAll(additionalMM2Config);
