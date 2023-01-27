@@ -347,7 +347,7 @@ public class PluginsTest {
             createConfig();
         }
 
-        ConfigProvider plugin = plugins.newConfigProvider(
+        ConfigProvider plugin = plugins.newRawConfigProvider(
             config,
             providerPrefix,
             ClassLoaderUsage.PLUGINS

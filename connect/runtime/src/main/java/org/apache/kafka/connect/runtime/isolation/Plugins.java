@@ -450,7 +450,15 @@ public class Plugins {
         return plugin;
     }
 
-    public ConfigProvider newConfigProvider(AbstractConfig config, String providerPrefix, ClassLoaderUsage classLoaderUsage) {
+    public IsolatedConfigProvider newConfigProvider(AbstractConfig config, String providerPrefix, ClassLoaderUsage classLoaderUsage) {
+        ConfigProvider configProvider = newRawConfigProvider(config, providerPrefix, classLoaderUsage);
+        if (configProvider == null) {
+            return null;
+        }
+        return new IsolatedConfigProvider(this, configProvider);
+    }
+
+    ConfigProvider newRawConfigProvider(AbstractConfig config, String providerPrefix, ClassLoaderUsage classLoaderUsage) {
         String classPropertyName = providerPrefix + ".class";
         Map<String, String> originalConfig = config.originalsStrings();
         if (!originalConfig.containsKey(classPropertyName)) {
