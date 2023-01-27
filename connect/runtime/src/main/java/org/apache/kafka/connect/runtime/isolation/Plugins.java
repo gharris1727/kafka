@@ -25,6 +25,7 @@ import org.apache.kafka.connect.connector.Connector;
 import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.rest.ConnectRestExtension;
 import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.sink.SinkConnector;
 import org.apache.kafka.connect.sink.SinkTask;
@@ -46,6 +47,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class Plugins {
 
@@ -503,16 +505,22 @@ public class Plugins {
     }
 
     /**
-     * If the given class names are available in the classloader, return a list of new configured
-     * instances. If the instances implement {@link Configurable}, they are configured with provided {@param config}
+     * Load, instantiate, and configure several {@link IsolatedRestExtension} instances, providing
+     * a handle to interact with several pluggable {@link ConnectRestExtension} instances.
      *
      * @param klassNames         the list of class names of plugins that needs to instantiated and configured
      * @param config             the configuration containing the {@link org.apache.kafka.connect.runtime.Worker}'s configuration; may not be {@code null}
-     * @param pluginKlass        the type of the plugin class that is being instantiated
-     * @return the instantiated and configured list of plugins of type <T>; empty list if the {@param klassNames} is {@code null} or empty
-     * @throws ConnectException if the implementation class could not be found
+     * @return the instantiated and configured list of plugins; empty list if the {@param klassNames} is {@code null} or empty
+     * @throws ConnectException if one or more plugin classes could not be loaded
      */
-    public <T> List<T> newPlugins(List<String> klassNames, AbstractConfig config, Class<T> pluginKlass) {
+    public List<IsolatedRestExtension> newRestExtensions(List<String> klassNames, AbstractConfig config) {
+        return newPlugins(klassNames, config, ConnectRestExtension.class)
+                .stream()
+                .map(extension -> new IsolatedRestExtension(this, extension))
+                .collect(Collectors.toList());
+    }
+
+    <T> List<T> newPlugins(List<String> klassNames, AbstractConfig config, Class<T> pluginKlass) {
         List<T> plugins = new ArrayList<>();
         if (klassNames != null) {
             for (String klassName : klassNames) {
