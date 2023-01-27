@@ -217,7 +217,36 @@ public class Plugins {
         return delegatingLoader.predicates();
     }
 
-    public Object newPlugin(String classOrAlias) throws ClassNotFoundException {
+    public IsolatedPlugin<?> newPlugin(String classOrAlias) throws ClassNotFoundException {
+        Object plugin = newRawPlugin(classOrAlias);
+        if (plugin instanceof SourceConnector) {
+            return new IsolatedSourceConnector(this, (SourceConnector) plugin);
+        } else if (plugin instanceof SinkConnector) {
+            return new IsolatedSinkConnector(this, (SinkConnector) plugin);
+        } else if (plugin instanceof Converter) {
+            return new IsolatedConverter(this, (Converter) plugin);
+        } else if (plugin instanceof HeaderConverter) {
+            return new IsolatedHeaderConverter(this, (HeaderConverter) plugin);
+        } else if (plugin instanceof ConfigProvider) {
+            return new IsolatedConfigProvider(this, (ConfigProvider) plugin);
+        } else if (plugin instanceof Predicate) {
+            return new IsolatedPredicate<>(this, (Predicate<?>) plugin);
+        } else if (plugin instanceof Transformation) {
+            return new IsolatedTransformation<>(this, (Transformation<?>) plugin);
+        } else if (plugin instanceof ConnectRestExtension) {
+            return new IsolatedRestExtension(this, (ConnectRestExtension) plugin);
+        } else if (plugin instanceof ConnectorClientConfigOverridePolicy) {
+            return new IsolatedOverridePolicy(this, (ConnectorClientConfigOverridePolicy) plugin);
+        } else if (plugin instanceof SourceTask) {
+            return new IsolatedSourceTask(this, (SourceTask) plugin);
+        } else if (plugin instanceof SinkTask) {
+            return new IsolatedSinkTask(this, (SinkTask) plugin);
+        } else {
+            throw new IllegalArgumentException("taskClass must be a valid plugin type");
+        }
+    }
+
+    private Object newRawPlugin(String classOrAlias) throws ClassNotFoundException {
         Class<?> klass = pluginClass(delegatingLoader, classOrAlias, Object.class);
         return newPlugin(klass);
     }

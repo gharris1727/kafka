@@ -180,7 +180,7 @@ public class PluginsTest {
 
     @Test
     public void shouldThrowIfPluginThrows() {
-        assertThrows(ConnectException.class, () -> plugins.newPlugin(
+        assertThrows(ConnectException.class, () -> plugins.newRawPlugin(
             TestPlugin.ALWAYS_THROW_EXCEPTION.className(),
             new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
             Converter.class
@@ -189,7 +189,7 @@ public class PluginsTest {
 
     @Test
     public void shouldFindCoLocatedPluginIfBadPackaging() {
-        Converter converter = plugins.newPlugin(
+        Converter converter = plugins.newRawPlugin(
                 TestPlugin.FAIL_TO_INITIALIZE_CO_LOCATED.className(),
                 new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
                 Converter.class
@@ -199,7 +199,7 @@ public class PluginsTest {
 
     @Test
     public void shouldThrowIfPluginMissingSuperclass() {
-        assertThrows(ConnectException.class, () -> plugins.newPlugin(
+        assertThrows(ConnectException.class, () -> plugins.newRawPlugin(
                 TestPlugin.FAIL_TO_INITIALIZE_MISSING_SUPERCLASS.className(),
                 new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
                 Converter.class
@@ -215,7 +215,7 @@ public class PluginsTest {
 
     @Test
     public void shouldThrowIfStaticInitializerThrowsServiceLoader() {
-        assertThrows(ConnectException.class, () -> plugins.newPlugin(
+        assertThrows(ConnectException.class, () -> plugins.newRawPlugin(
                 TestPlugin.FAIL_TO_INITIALIZE_STATIC_INITIALIZER_THROWS_REST_EXTENSION.className(),
                 new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
                 ConnectRestExtension.class
@@ -260,7 +260,7 @@ public class PluginsTest {
     @Test
     public void shouldShareStaticValuesBetweenSamePlugin() {
         // Plugins are not isolated from other instances of their own class.
-        Converter firstPlugin = plugins.newPlugin(
+        Converter firstPlugin = plugins.newRawPlugin(
             TestPlugin.ALIASED_STATIC_FIELD.className(),
             new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
             Converter.class
@@ -268,7 +268,7 @@ public class PluginsTest {
 
         assertInstanceOf(SamplingTestPlugin.class, firstPlugin, "Cannot collect samples");
 
-        Converter secondPlugin = plugins.newPlugin(
+        Converter secondPlugin = plugins.newRawPlugin(
             TestPlugin.ALIASED_STATIC_FIELD.className(),
             new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
             Converter.class
@@ -283,7 +283,7 @@ public class PluginsTest {
 
     @Test
     public void newPluginShouldServiceLoadWithPluginClassLoader() {
-        Converter plugin = plugins.newPlugin(
+        Converter plugin = plugins.newRawPlugin(
             TestPlugin.SERVICE_LOADER.className(),
             new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
             Converter.class
@@ -299,7 +299,7 @@ public class PluginsTest {
 
     @Test
     public void newPluginShouldInstantiateWithPluginClassLoader() {
-        Converter plugin = plugins.newPlugin(
+        Converter plugin = plugins.newRawPlugin(
             TestPlugin.ALIASED_STATIC_FIELD.className(),
             new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
             Converter.class
@@ -456,7 +456,7 @@ public class PluginsTest {
         );
         plugins = new Plugins(pluginProps, parent);
 
-        Converter converter = plugins.newPlugin(
+        Converter converter = plugins.newRawPlugin(
                 className,
                 new AbstractConfig(new ConfigDef(), Collections.emptyMap()),
                 Converter.class
