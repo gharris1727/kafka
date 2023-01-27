@@ -208,7 +208,7 @@ public class PluginsTest {
 
     @Test
     public void shouldThrowIfStaticInitializerThrows() {
-        assertThrows(ConnectException.class, () -> plugins.newConnector(
+        assertThrows(ConnectException.class, () -> plugins.newRawConnector(
                 TestPlugin.FAIL_TO_INITIALIZE_STATIC_INITIALIZER_THROWS_CONNECTOR.className()
         ));
     }
@@ -224,35 +224,35 @@ public class PluginsTest {
 
     @Test
     public void shouldThrowIfDefaultConstructorThrows() {
-        assertThrows(ConnectException.class, () -> plugins.newConnector(
+        assertThrows(ConnectException.class, () -> plugins.newRawConnector(
                 TestPlugin.FAIL_TO_INITIALIZE_DEFAULT_CONSTRUCTOR_THROWS_CONNECTOR.className()
         ));
     }
 
     @Test
     public void shouldThrowIfDefaultConstructorPrivate() {
-        assertThrows(ConnectException.class, () -> plugins.newConnector(
+        assertThrows(ConnectException.class, () -> plugins.newRawConnector(
                 TestPlugin.FAIL_TO_INITIALIZE_DEFAULT_CONSTRUCTOR_PRIVATE_CONNECTOR.className()
         ));
     }
 
     @Test
     public void shouldThrowIfNoDefaultConstructor() {
-        assertThrows(ConnectException.class, () -> plugins.newConnector(
+        assertThrows(ConnectException.class, () -> plugins.newRawConnector(
                 TestPlugin.FAIL_TO_INITIALIZE_NO_DEFAULT_CONSTRUCTOR_CONNECTOR.className()
         ));
     }
 
     @Test
     public void shouldNotThrowIfVersionMethodThrows() {
-        assertNotNull(plugins.newConnector(
+        assertNotNull(plugins.newRawConnector(
                 TestPlugin.FAIL_TO_INITIALIZE_VERSION_METHOD_THROWS_CONNECTOR.className()
         ));
     }
 
     @Test
     public void shouldThrowIfPluginInnerClass() {
-        assertThrows(ConnectException.class, () -> plugins.newConnector(
+        assertThrows(ConnectException.class, () -> plugins.newRawConnector(
                 TestPlugin.FAIL_TO_INITIALIZE_INNER_CLASS_CONNECTOR.className()
         ));
     }
@@ -381,7 +381,7 @@ public class PluginsTest {
 
     @Test
     public void newConnectorShouldInstantiateWithPluginClassLoader() {
-        Connector plugin = plugins.newConnector(TestPlugin.SAMPLING_CONNECTOR.className());
+        Connector plugin = plugins.newRawConnector(TestPlugin.SAMPLING_CONNECTOR.className());
 
         assertInstanceOf(SamplingTestPlugin.class, plugin, "Cannot collect samples");
         Map<String, SamplingTestPlugin> samples = ((SamplingTestPlugin) plugin).flatten();
