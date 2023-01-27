@@ -23,6 +23,7 @@ import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.components.Versioned;
 import org.apache.kafka.connect.connector.Connector;
 import org.apache.kafka.connect.connector.Task;
+import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.sink.SinkConnector;
@@ -515,13 +516,18 @@ public class Plugins {
         List<T> plugins = new ArrayList<>();
         if (klassNames != null) {
             for (String klassName : klassNames) {
-                plugins.add(newPlugin(klassName, config, pluginKlass));
+                plugins.add(newRawPlugin(klassName, config, pluginKlass));
             }
         }
         return plugins;
     }
 
-    public <T> T newPlugin(String klassName, AbstractConfig config, Class<T> pluginKlass) {
+    public IsolatedOverridePolicy newOverridePolicy(String klassName, AbstractConfig config) {
+        ConnectorClientConfigOverridePolicy plugin = newRawPlugin(klassName, config, ConnectorClientConfigOverridePolicy.class);
+        return new IsolatedOverridePolicy(this, plugin);
+    }
+
+    <T> T newRawPlugin(String klassName, AbstractConfig config, Class<T> pluginKlass) {
         T plugin;
         Class<? extends T> klass;
         try {
