@@ -26,6 +26,8 @@ import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.connector.ConnectRecord;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.runtime.errors.ToleranceType;
+import org.apache.kafka.connect.runtime.isolation.IsolatedPredicate;
+import org.apache.kafka.connect.runtime.isolation.IsolatedTransformation;
 import org.apache.kafka.connect.runtime.isolation.PluginDesc;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
 import org.apache.kafka.connect.transforms.Transformation;
@@ -163,6 +165,8 @@ public class ConnectorConfig extends AbstractConfig {
     public static final String PREDICATES_PREFIX = "predicates.";
 
     private final EnrichedConnectorConfig enrichedConfig;
+    private final Plugins plugins;
+
     private static class EnrichedConnectorConfig extends AbstractConfig {
         EnrichedConnectorConfig(ConfigDef configDef, Map<String, String> props) {
             super(configDef, props);
@@ -230,6 +234,7 @@ public class ConnectorConfig extends AbstractConfig {
 
     public ConnectorConfig(Plugins plugins, ConfigDef configDef, Map<String, String> props) {
         super(configDef, props);
+        this.plugins = plugins;
         enrichedConfig = new EnrichedConnectorConfig(
                 enrich(plugins, configDef, props, true),
                 props
@@ -279,7 +284,7 @@ public class ConnectorConfig extends AbstractConfig {
 
             try {
                 @SuppressWarnings("unchecked")
-                final Transformation<R> transformation = Utils.newInstance(getClass(prefix + "type"), Transformation.class);
+                final IsolatedTransformation<R> transformation = plugins.newTransformation((Class<? extends Transformation<R>>) getClass(prefix + "type"));
                 Map<String, Object> configs = originalsWithPrefix(prefix);
                 Object predicateAlias = configs.remove(PredicatedTransformation.PREDICATE_CONFIG);
                 Object negate = configs.remove(PredicatedTransformation.NEGATE_CONFIG);
@@ -287,7 +292,7 @@ public class ConnectorConfig extends AbstractConfig {
                 if (predicateAlias != null) {
                     String predicatePrefix = PREDICATES_PREFIX + predicateAlias + ".";
                     @SuppressWarnings("unchecked")
-                    Predicate<R> predicate = Utils.newInstance(getClass(predicatePrefix + "type"), Predicate.class);
+                    IsolatedPredicate<R> predicate = plugins.newPredicate((Class<? extends Predicate<R>>) getClass(predicatePrefix + "type"));
                     predicate.configure(originalsWithPrefix(predicatePrefix));
                     transformations.add(new PredicatedTransformation<>(predicate, negate == null ? false : Boolean.parseBoolean(negate.toString()), transformation));
                 } else {

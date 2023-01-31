@@ -493,7 +493,7 @@ public class TopicCreationTest {
     }
 
     @Test
-    public void testTopicCreationWithSingleTransformation() {
+    public void testTopicCreationWithSingleTransformation() throws Exception {
         sourceProps = defaultConnectorPropsWithTopicCreation();
         sourceProps.put(TOPIC_CREATION_GROUPS_CONFIG, String.join(",", FOO_GROUP, BAR_GROUP));
         String xformName = "example";
@@ -525,7 +525,7 @@ public class TopicCreationTest {
     }
 
     @Test
-    public void topicCreationWithTwoGroupsAndTwoTransformations() {
+    public void topicCreationWithTwoGroupsAndTwoTransformations() throws Exception {
         short fooReplicas = 3;
         int partitions = 5;
         int barPartitions = 1;

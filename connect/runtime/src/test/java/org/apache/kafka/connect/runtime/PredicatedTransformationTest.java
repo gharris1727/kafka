@@ -16,9 +16,9 @@
  */
 package org.apache.kafka.connect.runtime;
 
+import org.apache.kafka.connect.runtime.isolation.IsolatedPredicate;
+import org.apache.kafka.connect.runtime.isolation.IsolatedTransformation;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.apache.kafka.connect.transforms.Transformation;
-import org.apache.kafka.connect.transforms.predicates.Predicate;
 import org.junit.Test;
 
 import static java.util.Collections.singletonMap;
@@ -34,7 +34,7 @@ public class PredicatedTransformationTest {
     private final SourceRecord transformed = new SourceRecord(singletonMap("transformed", 2), null, null, null, null);
 
     @Test
-    public void apply() {
+    public void apply() throws Exception {
         applyAndAssert(true, false, transformed);
         applyAndAssert(true, true, initial);
         applyAndAssert(false, false, initial);
@@ -42,13 +42,13 @@ public class PredicatedTransformationTest {
     }
 
     private void applyAndAssert(boolean predicateResult, boolean negate,
-                                SourceRecord expectedResult) {
+                                SourceRecord expectedResult) throws Exception {
 
         @SuppressWarnings("unchecked")
-        Predicate<SourceRecord> predicate = mock(Predicate.class);
+        IsolatedPredicate<SourceRecord> predicate = mock(IsolatedPredicate.class);
         when(predicate.test(any())).thenReturn(predicateResult);
         @SuppressWarnings("unchecked")
-        Transformation<SourceRecord> predicatedTransform = mock(Transformation.class);
+        IsolatedTransformation<SourceRecord> predicatedTransform = mock(IsolatedTransformation.class);
         when(predicatedTransform.apply(any())).thenReturn(transformed);
         PredicatedTransformation<SourceRecord> pt = new PredicatedTransformation<>(
                 predicate,

@@ -143,7 +143,7 @@ public class ConnectorConfigTest<R extends ConnectRecord<R>> {
     }
 
     @Test
-    public void singleTransform() {
+    public void singleTransform() throws Exception {
         Map<String, String> props = new HashMap<>();
         props.put("name", "test");
         props.put("connector.class", TestConnector.class.getName());
@@ -169,7 +169,7 @@ public class ConnectorConfigTest<R extends ConnectRecord<R>> {
     }
 
     @Test
-    public void multipleTransforms() {
+    public void multipleTransforms() throws Exception {
         Map<String, String> props = new HashMap<>();
         props.put("name", "test");
         props.put("connector.class", TestConnector.class.getName());
@@ -238,7 +238,7 @@ public class ConnectorConfigTest<R extends ConnectRecord<R>> {
     }
 
     @Test
-    public void singleConditionalTransform() {
+    public void singleConditionalTransform() throws Exception {
         Map<String, String> props = new HashMap<>();
         props.put("name", "test");
         props.put("connector.class", TestConnector.class.getName());
@@ -254,7 +254,7 @@ public class ConnectorConfigTest<R extends ConnectRecord<R>> {
     }
 
     @Test
-    public void predicateNegationDefaultsToFalse() {
+    public void predicateNegationDefaultsToFalse() throws Exception {
         Map<String, String> props = new HashMap<>();
         props.put("name", "test");
         props.put("connector.class", TestConnector.class.getName());
@@ -284,7 +284,7 @@ public class ConnectorConfigTest<R extends ConnectRecord<R>> {
         assertTrue(e.getMessage().contains("Predicate is abstract and cannot be created"));
     }
 
-    private void assertPredicatedTransform(Map<String, String> props, boolean expectedNegated) {
+    private void assertPredicatedTransform(Map<String, String> props, boolean expectedNegated) throws Exception {
         final ConnectorConfig config = new ConnectorConfig(MOCK_PLUGINS, props);
         final List<PredicatedTransformation<SinkRecord>> transformations = config.transformations();
         assertEquals(1, transformations.size());

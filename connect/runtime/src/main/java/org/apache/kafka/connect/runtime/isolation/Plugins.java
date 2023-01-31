@@ -21,6 +21,7 @@ import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.provider.ConfigProvider;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.components.Versioned;
+import org.apache.kafka.connect.connector.ConnectRecord;
 import org.apache.kafka.connect.connector.Connector;
 import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
@@ -518,6 +519,16 @@ public class Plugins {
                 .stream()
                 .map(extension -> new IsolatedRestExtension(this, extension))
                 .collect(Collectors.toList());
+    }
+
+    public <R extends ConnectRecord<R>> IsolatedTransformation<R> newTransformation(Class<? extends Transformation<R>> klass) {
+        Transformation<R> plugin = newPlugin(klass);
+        return new IsolatedTransformation<>(this, plugin);
+    }
+
+    public <R extends ConnectRecord<R>> IsolatedPredicate<R> newPredicate(Class<? extends Predicate<R>> klass) {
+        Predicate<R> plugin = newPlugin(klass);
+        return new IsolatedPredicate<>(this, plugin);
     }
 
     <T> List<T> newPlugins(List<String> klassNames, AbstractConfig config, Class<T> pluginKlass) {

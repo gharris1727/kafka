@@ -526,7 +526,7 @@ public class ErrorHandlingTaskTest {
         }
     }
 
-    private void mockSinkTransform() {
+    private void mockSinkTransform() throws Exception {
         FaultyPassthrough<SinkRecord> faultyPassthrough = new FaultyPassthrough<>();
         @SuppressWarnings("unchecked")
         Class<? extends Transformation<?>> value = (Class<? extends Transformation<?>>) (Class<?>) FaultyPassthrough.class;
@@ -550,7 +550,7 @@ public class ErrorHandlingTaskTest {
                 statusBackingStore);
     }
 
-    private void mockSourceTransform() {
+    private void mockSourceTransform() throws Exception {
         FaultyPassthrough<SourceRecord> faultyPassthrough = new FaultyPassthrough<>();
         @SuppressWarnings("unchecked")
         Class<? extends Transformation<?>> value = (Class<? extends Transformation<?>>) (Class<?>) FaultyPassthrough.class;

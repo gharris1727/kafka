@@ -19,39 +19,38 @@ package org.apache.kafka.connect.runtime;
 
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.connector.ConnectRecord;
+import org.apache.kafka.connect.runtime.isolation.IsolatedPredicate;
+import org.apache.kafka.connect.runtime.isolation.IsolatedTransformation;
 import org.apache.kafka.connect.transforms.Transformation;
-import org.apache.kafka.connect.transforms.predicates.Predicate;
 
 /**
- * Decorator for a {@link Transformation} which applies the delegate only when a
- * {@link Predicate} is true (or false, according to {@code negate}).
+ * Decorator for an {@link IsolatedTransformation} which applies the delegate only when a
+ * {@link IsolatedPredicate} is true (or false, according to {@code negate}).
  * @param <R>
  */
 public class PredicatedTransformation<R extends ConnectRecord<R>> implements AutoCloseable {
 
     static final String PREDICATE_CONFIG = "predicate";
     static final String NEGATE_CONFIG = "negate";
-    final Predicate<R> predicate;
-    final Transformation<R> delegate;
+    final IsolatedPredicate<R> predicate;
+    final IsolatedTransformation<R> delegate;
     final boolean negate;
 
-    PredicatedTransformation(Transformation<R> delegate) {
+    PredicatedTransformation(IsolatedTransformation<R> delegate) {
         this(null, false, delegate);
     }
 
-    PredicatedTransformation(Predicate<R> predicate, boolean negate, Transformation<R> delegate) {
+    PredicatedTransformation(IsolatedPredicate<R> predicate, boolean negate, IsolatedTransformation<R> delegate) {
         this.predicate = predicate;
         this.negate = negate;
         this.delegate = delegate;
     }
 
     public Class<? extends Transformation<R>> transformClass() {
-        @SuppressWarnings("unchecked")
-        Class<? extends Transformation<R>> transformClass = (Class<? extends Transformation<R>>) delegate.getClass();
-        return transformClass;
+        return delegate.pluginClass();
     }
 
-    public R apply(R record) {
+    public R apply(R record) throws Exception {
         if (predicate == null || negate ^ predicate.test(record)) {
             return delegate.apply(record);
         }
