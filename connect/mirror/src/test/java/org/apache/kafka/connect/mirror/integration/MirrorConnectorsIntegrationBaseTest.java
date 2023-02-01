@@ -529,7 +529,7 @@ public class MirrorConnectorsIntegrationBaseTest {
     }
 
     @Test
-    public void testNoCheckpointsIfNoRecordsAreMirrored() throws InterruptedException {
+    public void testNoCheckpointsIfNoRecordsAreMirrored() throws Exception {
         String consumerGroupName = "consumer-group-no-checkpoints";
         Map<String, Object> consumerProps = Collections.singletonMap("group.id", consumerGroupName);
 

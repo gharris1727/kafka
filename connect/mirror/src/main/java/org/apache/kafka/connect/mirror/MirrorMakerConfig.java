@@ -25,11 +25,11 @@ import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigDef.Importance;
-import org.apache.kafka.common.config.provider.ConfigProvider;
-import org.apache.kafka.common.config.ConfigTransformer;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.runtime.distributed.DistributedConfig;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConfigProvider;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConfigTransformer;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
 
 import java.util.Map;
@@ -128,7 +128,7 @@ public class MirrorMakerConfig extends AbstractConfig {
     /** Construct a MirrorClientConfig from properties of the form cluster.x.y.z.
       * Use to connect to a cluster based on the MirrorMaker top-level config file.
       */
-    public MirrorClientConfig clientConfig(String cluster) {
+    public MirrorClientConfig clientConfig(String cluster) throws Exception {
         Map<String, String> props = new HashMap<>();
         props.putAll(originalsStrings());
         props.putAll(clusterProps(cluster));
@@ -165,7 +165,7 @@ public class MirrorMakerConfig extends AbstractConfig {
     }
 
     // loads worker configs based on properties of the form x.y.z and cluster.x.y.z 
-    public Map<String, String> workerConfig(SourceAndTarget sourceAndTarget) {
+    public Map<String, String> workerConfig(SourceAndTarget sourceAndTarget) throws Exception {
         Map<String, String> props = new HashMap<>();
         props.putAll(clusterProps(sourceAndTarget.target()));
       
@@ -254,22 +254,24 @@ public class MirrorMakerConfig extends AbstractConfig {
         return getList(CONFIG_PROVIDERS_CONFIG);
     } 
 
-    Map<String, String> transform(Map<String, String> props) {
+    Map<String, String> transform(Map<String, String> props) throws Exception {
         // transform worker config according to config.providers
         List<String> providerNames = configProviders();
-        Map<String, ConfigProvider> providers = new HashMap<>();
+        Map<String, IsolatedConfigProvider> providers = new HashMap<>();
         for (String name : providerNames) {
-            ConfigProvider configProvider = plugins.newConfigProvider(
+            IsolatedConfigProvider configProvider = plugins.newConfigProvider(
                     this,
                     CONFIG_PROVIDERS_CONFIG + "." + name,
                     Plugins.ClassLoaderUsage.PLUGINS
             );
             providers.put(name, configProvider);
         }
-        ConfigTransformer transformer = new ConfigTransformer(providers);
-        Map<String, String> transformed = transformer.transform(props).data();
-        providers.values().forEach(x -> Utils.closeQuietly(x, "config provider"));
-        return transformed;
+        IsolatedConfigTransformer transformer = new IsolatedConfigTransformer(providers);
+        try {
+            return transformer.transform(props).data();
+        } finally {
+            providers.values().forEach(x -> Utils.closeQuietly(x, "config provider"));
+        }
     }
  
     protected static final ConfigDef CONFIG_DEF = new ConfigDef()

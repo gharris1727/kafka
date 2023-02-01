@@ -42,6 +42,7 @@ import org.apache.kafka.connect.health.ConnectorType;
 import org.apache.kafka.connect.json.JsonConverter;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
 import org.apache.kafka.connect.runtime.MockConnectMetrics.MockMetricsReporter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConfigProvider;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
@@ -205,6 +206,7 @@ public class WorkerTest {
     @Mock private IsolatedConverter taskKeyConverter;
     @Mock private IsolatedConverter taskValueConverter;
     @Mock private IsolatedHeaderConverter taskHeaderConverter;
+    @Mock private IsolatedConfigProvider configProvider;
     @Mock private ExecutorService executorService;
     @Mock private ConnectorConfig connectorConfig;
     private String mockFileProviderTestId;
@@ -303,7 +305,7 @@ public class WorkerTest {
         connectorProps.put(CONNECTOR_CLASS_CONFIG, connectorClass);
 
         // Create
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         mockConnectorIsolation(connectorClass, sourceConnector);
         mockExecutorRealSubmit(WorkerConnector.class);
 
@@ -356,12 +358,10 @@ public class WorkerTest {
     }
 
     private void mockFileConfigProvider() {
-        MockFileConfigProvider mockFileConfigProvider = new MockFileConfigProvider();
-        mockFileConfigProvider.configure(Collections.singletonMap("testId", mockFileProviderTestId));
         when(plugins.newConfigProvider(any(AbstractConfig.class),
-                                       eq("config.providers.file"),
-                                       any(ClassLoaderUsage.class)))
-               .thenReturn(mockFileConfigProvider);
+                eq("config.providers.file"),
+                any(ClassLoaderUsage.class)))
+                .thenReturn(configProvider);
     }
 
     @Test
@@ -370,7 +370,7 @@ public class WorkerTest {
         connectorProps.put(CONNECTOR_CLASS_CONFIG, nonConnectorClass); // Bad connector class name
 
         Exception exception = new ConnectException("Failed to find Connector");
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         mockGenericIsolation();
 
         when(plugins.newConnector(anyString())).thenThrow(exception);
@@ -407,7 +407,7 @@ public class WorkerTest {
     @Test
     public void testAddConnectorByAlias() throws Throwable {
         final String connectorAlias = "SampleSourceConnector";
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         mockConnectorIsolation(connectorAlias, sinkConnector);
         mockExecutorRealSubmit(WorkerConnector.class);
 
@@ -451,7 +451,7 @@ public class WorkerTest {
     public void testAddConnectorByShortAlias() throws Throwable {
         final String shortConnectorAlias = "WorkerTest";
 
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         mockConnectorIsolation(shortConnectorAlias, sinkConnector);
         mockExecutorRealSubmit(WorkerConnector.class);
         connectorProps.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, shortConnectorAlias);
@@ -491,7 +491,7 @@ public class WorkerTest {
 
     @Test
     public void testStopInvalidConnector() {
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         worker = new Worker(WORKER_ID, new MockTime(), plugins, config, offsetBackingStore, noneConnectorClientConfigOverridePolicy);
         worker.herder = herder;
         worker.start();
@@ -506,7 +506,7 @@ public class WorkerTest {
     public void testReconfigureConnectorTasks() throws Throwable {
         final String connectorClass = SampleSourceConnector.class.getName();
 
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         mockConnectorIsolation(connectorClass, sinkConnector);
         mockExecutorRealSubmit(WorkerConnector.class);
 
@@ -578,7 +578,7 @@ public class WorkerTest {
 
     @Test
     public void testAddRemoveSourceTask() throws Exception {
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         mockTaskIsolation(SampleSourceConnector.class, TestSourceTask.class, task);
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, taskKeyConverter);
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.VALUE_CONVERTER_CLASS_CONFIG, taskValueConverter);
@@ -617,7 +617,7 @@ public class WorkerTest {
     public void testAddRemoveSinkTask() throws Exception {
         // Most of the other cases use source tasks; we make sure to get code coverage for sink tasks here as well
         IsolatedSinkTask task = mock(IsolatedSinkTask.class);
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         mockTaskIsolation(SampleSinkConnector.class, TestSinkTask.class, task);
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, taskKeyConverter);
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.VALUE_CONVERTER_CLASS_CONFIG, taskValueConverter);
@@ -673,8 +673,7 @@ public class WorkerTest {
         workerProps.put(STATUS_STORAGE_TOPIC_CONFIG, "connect-statuses");
         workerProps.put(EXACTLY_ONCE_SOURCE_SUPPORT_CONFIG, "enabled");
         config = new DistributedConfig(workerProps);
-
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         mockTaskIsolation(SampleSourceConnector.class, TestSourceTask.class, task);
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, taskKeyConverter);
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.VALUE_CONVERTER_CLASS_CONFIG, taskValueConverter);
@@ -713,15 +712,13 @@ public class WorkerTest {
 
     @Test
     public void testTaskStatusMetricsStatuses() throws Exception {
-        mockInternalConverters();
+        mockWorkerConstructor();
         mockStorage();
-        mockFileConfigProvider();
 
         Map<String, String> origProps = Collections.singletonMap(TaskConfig.TASK_CLASS_CONFIG, TestSourceTask.class.getName());
 
         TaskConfig taskConfig = new TaskConfig(origProps);
 
-        mockKafkaClusterId();
         mockTaskIsolation(SampleSourceConnector.class, TestSourceTask.class, task);
         // Expect that the worker will create converters and will find them using the current classloader ...
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, taskKeyConverter);
@@ -799,9 +796,7 @@ public class WorkerTest {
         tasks.put(new ConnectorTaskId("c1", 1), mock(WorkerSourceTask.class));
         tasks.put(new ConnectorTaskId("c2", 0), mock(WorkerSourceTask.class));
 
-        mockKafkaClusterId();
-        mockInternalConverters();
-        mockFileConfigProvider();
+        mockWorkerConstructor();
 
         worker = new Worker(WORKER_ID,
             new MockTime(),
@@ -823,12 +818,10 @@ public class WorkerTest {
 
     @Test
     public void testStartTaskFailure() {
-        mockInternalConverters();
-        mockFileConfigProvider();
+        mockWorkerConstructor();
 
         Map<String, String> origProps = Collections.singletonMap(TaskConfig.TASK_CLASS_CONFIG, "missing.From.This.Workers.Classpath");
 
-        mockKafkaClusterId();
         mockGenericIsolation();
 
         worker = new Worker(WORKER_ID, new MockTime(), plugins, config, offsetBackingStore, noneConnectorClientConfigOverridePolicy);
@@ -851,11 +844,9 @@ public class WorkerTest {
 
     @Test
     public void testCleanupTasksOnStop() throws Exception {
-        mockInternalConverters();
+        mockWorkerConstructor();
         mockStorage();
-        mockFileConfigProvider();
 
-        mockKafkaClusterId();
         mockTaskIsolation(SampleSourceConnector.class, TestSourceTask.class, task);
         // Expect that the worker will create converters and will not initially find them using the current classloader ...
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, null);
@@ -896,14 +887,12 @@ public class WorkerTest {
 
     @Test
     public void testConverterOverrides() throws Exception {
-        mockInternalConverters();
+        mockWorkerConstructor();
         mockStorage();
-        mockFileConfigProvider();
 
         Map<String, String> origProps = Collections.singletonMap(TaskConfig.TASK_CLASS_CONFIG, TestSourceTask.class.getName());
         TaskConfig taskConfig = new TaskConfig(origProps);
 
-        mockKafkaClusterId();
         mockTaskIsolation(SampleSourceConnector.class, TestSourceTask.class, task);
         // Expect that the worker will create converters and will not initially find them using the current classloader ...
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, null);
@@ -1261,8 +1250,6 @@ public class WorkerTest {
 
     @Test
     public void testOffsetStoreForRegularSourceConnector() {
-        mockInternalConverters();
-        mockFileConfigProvider();
 
         final String workerOffsetsTopic = "worker-offsets";
         final String workerBootstrapServers = "localhost:4761";
@@ -1274,8 +1261,7 @@ public class WorkerTest {
         workerProps.put("offset.storage.topic", workerOffsetsTopic);
         workerProps.put("status.storage.topic", "connect-statuses");
         config = new DistributedConfig(workerProps);
-        mockKafkaClusterId();
-
+        mockWorkerConstructor();
         worker = new Worker(WORKER_ID, new MockTime(), plugins, config, offsetBackingStore, allConnectorClientConfigOverridePolicy);
         worker.start();
 
@@ -1336,9 +1322,6 @@ public class WorkerTest {
 
     @Test
     public void testOffsetStoreForExactlyOnceSourceConnector() {
-        mockInternalConverters();
-        mockFileConfigProvider();
-
         final String workerOffsetsTopic = "worker-offsets";
         final String workerBootstrapServers = "localhost:4761";
         Map<String, String> workerProps = new HashMap<>(this.workerProps);
@@ -1349,8 +1332,7 @@ public class WorkerTest {
         workerProps.put("offset.storage.topic", workerOffsetsTopic);
         workerProps.put("status.storage.topic", "connect-statuses");
         config = new DistributedConfig(workerProps);
-        mockKafkaClusterId();
-
+        mockWorkerConstructor();
         worker = new Worker(WORKER_ID, new MockTime(), plugins, config, offsetBackingStore, allConnectorClientConfigOverridePolicy);
         worker.start();
 
@@ -1411,8 +1393,6 @@ public class WorkerTest {
 
     @Test
     public void testOffsetStoreForRegularSourceTask() {
-        mockInternalConverters();
-        mockFileConfigProvider();
 
         Map<String, Object> producerProps = new HashMap<>();
         @SuppressWarnings("unchecked")
@@ -1429,8 +1409,7 @@ public class WorkerTest {
         workerProps.put("offset.storage.topic", workerOffsetsTopic);
         workerProps.put("status.storage.topic", "connect-statuses");
         config = new DistributedConfig(workerProps);
-        mockKafkaClusterId();
-
+        mockWorkerConstructor();
         worker = new Worker(WORKER_ID, new MockTime(), plugins, config, offsetBackingStore, allConnectorClientConfigOverridePolicy);
         worker.start();
 
@@ -1515,8 +1494,6 @@ public class WorkerTest {
 
     @Test
     public void testOffsetStoreForExactlyOnceSourceTask() {
-        mockInternalConverters();
-        mockFileConfigProvider();
 
         Map<String, Object> producerProps = new HashMap<>();
         @SuppressWarnings("unchecked")
@@ -1533,8 +1510,7 @@ public class WorkerTest {
         workerProps.put("offset.storage.topic", workerOffsetsTopic);
         workerProps.put("status.storage.topic", "connect-statuses");
         config = new DistributedConfig(workerProps);
-        mockKafkaClusterId();
-
+        mockWorkerConstructor();
         worker = new Worker(WORKER_ID, new MockTime(), plugins, config, offsetBackingStore, allConnectorClientConfigOverridePolicy);
         worker.start();
 
@@ -1596,9 +1572,7 @@ public class WorkerTest {
 
     @Test
     public void testWorkerMetrics() throws Exception {
-        mockKafkaClusterId();
-        mockInternalConverters();
-        mockFileConfigProvider();
+        mockWorkerConstructor();
 
         Worker worker = new Worker("worker-1",
                 Time.SYSTEM,
@@ -1627,7 +1601,7 @@ public class WorkerTest {
 
     @Test
     public void testExecutorServiceShutdown() throws InterruptedException {
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         ExecutorService executorService = mock(ExecutorService.class);
         doNothing().when(executorService).shutdown();
         when(executorService.awaitTermination(1000L, TimeUnit.MILLISECONDS)).thenReturn(true);
@@ -1648,7 +1622,7 @@ public class WorkerTest {
 
     @Test
     public void testExecutorServiceShutdownWhenTerminationFails() throws InterruptedException {
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         ExecutorService executorService = mock(ExecutorService.class);
         doNothing().when(executorService).shutdown();
         when(executorService.awaitTermination(1000L, TimeUnit.MILLISECONDS)).thenReturn(false);
@@ -1669,7 +1643,7 @@ public class WorkerTest {
 
     @Test
     public void testExecutorServiceShutdownWhenTerminationThrowsException() throws InterruptedException {
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         ExecutorService executorService = mock(ExecutorService.class);
         doNothing().when(executorService).shutdown();
         when(executorService.awaitTermination(1000L, TimeUnit.MILLISECONDS)).thenThrow(new InterruptedException("interrupt"));
@@ -1698,7 +1672,7 @@ public class WorkerTest {
         when(fenceProducersResult.all()).thenReturn(fenceProducersFuture);
         when(fenceProducersFuture.whenComplete(any())).thenReturn(expectedZombieFenceFuture);
 
-        mockKafkaClusterId();
+        mockWorkerConstructor();
         mockGenericIsolation();
 
         worker = new Worker(WORKER_ID, new MockTime(), plugins, config, offsetBackingStore, executorService,
@@ -1783,6 +1757,12 @@ public class WorkerTest {
         verify(offsetBackingStore).start();
         verify(herder).statusBackingStore();
         verify(offsetBackingStore).stop();
+    }
+
+    private void mockWorkerConstructor() {
+        mockKafkaClusterId();
+        mockInternalConverters();
+        mockFileConfigProvider();
     }
 
     private void mockInternalConverters() {

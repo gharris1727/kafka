@@ -17,11 +17,11 @@
 package org.apache.kafka.connect.runtime;
 
 import org.apache.kafka.common.config.ConfigDef;
-import org.apache.kafka.common.config.provider.ConfigProvider;
-import org.apache.kafka.common.config.ConfigTransformer;
 import org.apache.kafka.common.config.ConfigTransformerResult;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.runtime.Herder.ConfigReloadAction;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConfigProvider;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConfigTransformer;
 import org.apache.kafka.connect.util.Callback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,21 +39,21 @@ public class WorkerConfigTransformer implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(WorkerConfigTransformer.class);
 
     private final Worker worker;
-    private final ConfigTransformer configTransformer;
+    private final IsolatedConfigTransformer configTransformer;
     private final ConcurrentMap<String, Map<String, HerderRequest>> requests = new ConcurrentHashMap<>();
-    private final Map<String, ConfigProvider> configProviders;
+    private final Map<String, IsolatedConfigProvider> configProviders;
 
-    public WorkerConfigTransformer(Worker worker, Map<String, ConfigProvider> configProviders) {
+    public WorkerConfigTransformer(Worker worker, Map<String, IsolatedConfigProvider> configProviders) {
         this.worker = worker;
         this.configProviders = configProviders;
-        this.configTransformer = new ConfigTransformer(configProviders);
+        this.configTransformer = new IsolatedConfigTransformer(configProviders);
     }
 
-    public Map<String, String> transform(Map<String, String> configs) {
+    public Map<String, String> transform(Map<String, String> configs) throws Exception {
         return transform(null, configs);
     }
 
-    public Map<String, String> transform(String connectorName, Map<String, String> configs) {
+    public Map<String, String> transform(String connectorName, Map<String, String> configs) throws Exception {
         if (configs == null) return null;
         ConfigTransformerResult result = configTransformer.transform(configs);
         if (connectorName != null) {

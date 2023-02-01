@@ -32,6 +32,7 @@ import org.apache.kafka.connect.connector.policy.NoneConnectorClientConfigOverri
 import org.apache.kafka.connect.connector.policy.PrincipalConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.NotFoundException;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConfigProvider;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;

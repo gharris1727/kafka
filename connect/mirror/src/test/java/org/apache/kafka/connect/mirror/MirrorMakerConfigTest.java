@@ -78,7 +78,7 @@ public class MirrorMakerConfigTest {
     }
 
     @Test
-    public void testClientConfigProperties() {
+    public void testClientConfigProperties() throws Exception {
         String clusterABootstrap = "127.0.0.1:9092, 127.0.0.2:9092";
         String clusterBBootstrap = "127.0.0.3:9092, 127.0.0.4:9092";
         MirrorMakerConfig mirrorConfig = new MirrorMakerConfig(makeProps(
@@ -231,7 +231,7 @@ public class MirrorMakerConfigTest {
     }
 
     @Test
-    public void testWorkerConfigs() {
+    public void testWorkerConfigs() throws Exception {
         MirrorMakerConfig mirrorConfig = new MirrorMakerConfig(makeProps(
             "clusters", "a, b",
             "config.providers", "fake",

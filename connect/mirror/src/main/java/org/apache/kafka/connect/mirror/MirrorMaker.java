@@ -116,7 +116,7 @@ public class MirrorMaker {
      *                  uses all clusters in the config.
      * @param time      time source
      */
-    public MirrorMaker(MirrorMakerConfig config, List<String> clusters, Time time) {
+    public MirrorMaker(MirrorMakerConfig config, List<String> clusters, Time time) throws Exception {
         log.debug("Kafka MirrorMaker instance created");
         this.time = time;
         this.advertisedBaseUrl = "NOTUSED";
@@ -134,7 +134,9 @@ public class MirrorMaker {
         if (herderPairs.isEmpty()) {
             throw new IllegalArgumentException("No source->target replication flows.");
         }
-        this.herderPairs.forEach(this::addHerder);
+        for (SourceAndTarget herderPair : this.herderPairs) {
+            addHerder(herderPair);
+        }
         shutdownHook = new ShutdownHook();
     }
 
@@ -145,15 +147,15 @@ public class MirrorMaker {
      *                  uses all clusters in the config.
      * @param time      time source
      */
-    public MirrorMaker(Map<String, String> config, List<String> clusters, Time time) {
+    public MirrorMaker(Map<String, String> config, List<String> clusters, Time time) throws Exception {
         this(new MirrorMakerConfig(config), clusters, time);
     }
 
-    public MirrorMaker(Map<String, String> props, List<String> clusters) {
+    public MirrorMaker(Map<String, String> props, List<String> clusters) throws Exception {
         this(props, clusters, Time.SYSTEM);
     }
 
-    public MirrorMaker(Map<String, String> props) {
+    public MirrorMaker(Map<String, String> props) throws Exception {
         this(props, null);
     }
 
@@ -225,7 +227,7 @@ public class MirrorMaker {
         CONNECTOR_CLASSES.forEach(x -> configureConnector(sourceAndTarget, x));
     }
 
-    private void addHerder(SourceAndTarget sourceAndTarget) {
+    private void addHerder(SourceAndTarget sourceAndTarget) throws Exception {
         log.info("creating herder for " + sourceAndTarget.toString());
         Map<String, String> workerProps = config.workerConfig(sourceAndTarget);
         String advertisedUrl = advertisedBaseUrl + "/" + sourceAndTarget.source();

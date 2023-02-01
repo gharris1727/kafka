@@ -131,7 +131,7 @@ public class StandaloneHerderTest {
 
 
     @Before
-    public void setup() {
+    public void setup() throws Exception {
         worker = PowerMock.createMock(Worker.class);
         String[] methodNames = new String[]{"connectorType", "buildRestartPlan", "recordRestarting"};
         herder = PowerMock.createPartialMock(StandaloneHerder.class, methodNames,

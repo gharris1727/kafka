@@ -291,7 +291,7 @@ public abstract class AbstractHerder implements Herder, TaskStatus.Listener, Con
         );
     }
 
-    protected Map<ConnectorTaskId, Map<String, String>> buildTasksConfig(String connector) {
+    protected Map<ConnectorTaskId, Map<String, String>> buildTasksConfig(String connector) throws Exception {
         final ClusterConfigState configState = configBackingStore.snapshot();
 
         if (!configState.contains(connector))

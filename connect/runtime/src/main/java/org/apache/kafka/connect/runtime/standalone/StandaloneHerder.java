@@ -228,7 +228,12 @@ public class StandaloneHerder extends AbstractHerder {
                 }
 
                 requestExecutorService.submit(() -> {
-                    updateConnectorTasks(connName);
+                    try {
+                        updateConnectorTasks(connName);
+                    } catch (Exception e) {
+                        callback.onCompletion(e, null);
+                        return;
+                    }
                     callback.onCompletion(null, new Created<>(created, createConnectorInfo(connName)));
                 });
             });
@@ -243,7 +248,11 @@ public class StandaloneHerder extends AbstractHerder {
             log.error("Task that requested reconfiguration does not exist: {}", connName);
             return;
         }
-        updateConnectorTasks(connName);
+        try {
+            updateConnectorTasks(connName);
+        } catch (Exception e) {
+            log.error("Unable to generate task configs for {}", connName, e);
+        }
     }
 
     @Override
@@ -271,13 +280,29 @@ public class StandaloneHerder extends AbstractHerder {
 
     @Override
     public synchronized void restartTask(ConnectorTaskId taskId, Callback<Void> cb) {
-        if (!configState.contains(taskId.connector()))
+        if (!configState.contains(taskId.connector())) {
             cb.onCompletion(new NotFoundException("Connector " + taskId.connector() + " not found", null), null);
+            return;
+        }
 
-        Map<String, String> taskConfigProps = configState.taskConfig(taskId);
-        if (taskConfigProps == null)
+        Map<String, String> taskConfigProps;
+        try {
+            taskConfigProps = configState.taskConfig(taskId);
+        } catch (Exception e) {
+            cb.onCompletion(new ConnectException("Failed to transform task config for " + taskId, e), null);
+            return;
+        }
+        if (taskConfigProps == null) {
             cb.onCompletion(new NotFoundException("Task " + taskId + " not found", null), null);
-        Map<String, String> connConfigProps = configState.connectorConfig(taskId.connector());
+            return;
+        }
+        Map<String, String> connConfigProps;
+        try {
+            connConfigProps = configState.connectorConfig(taskId.connector());
+        } catch (Exception e) {
+            cb.onCompletion(new ConnectException("Failed to transform connector config for " + taskId.connector(), e), null);
+            return;
+        }
 
         worker.stopAndAwaitTask(taskId);
         if (startTask(taskId, connConfigProps))
@@ -350,7 +375,12 @@ public class StandaloneHerder extends AbstractHerder {
         }
         if (plan.shouldRestartTasks()) {
             log.debug("Restarting {} of {} tasks for {}", plan.restartTaskCount(), plan.totalTaskCount(), request);
-            createConnectorTasks(connectorName, plan.taskIdsToRestart());
+            try {
+                createConnectorTasks(connectorName, plan.taskIdsToRestart());
+            } catch (Exception e) {
+                log.error("Could not restart all tasks for {}", request, e);
+                cb.onCompletion(new ConnectException("Unable to start tasks for connector " + connectorName, e), null);
+            }
             log.debug("Restarted {} of {} tasks for {} as requested", plan.restartTaskCount(), plan.totalTaskCount(), request);
         }
         // Complete the restart request
@@ -359,12 +389,18 @@ public class StandaloneHerder extends AbstractHerder {
     }
 
     private void startConnector(String connName, Callback<TargetState> onStart) {
-        Map<String, String> connConfigs = configState.connectorConfig(connName);
+        Map<String, String> connConfigs;
+        try {
+            connConfigs = configState.connectorConfig(connName);
+        } catch (Exception e) {
+            onStart.onCompletion(new ConnectException("Unable to transform config for " + connName, e), null);
+            return;
+        }
         TargetState targetState = configState.targetState(connName);
         worker.startConnector(connName, connConfigs, new HerderConnectorContext(this, connName), this, targetState, onStart);
     }
 
-    private List<Map<String, String>> recomputeTaskConfigs(String connName) {
+    private List<Map<String, String>> recomputeTaskConfigs(String connName) throws Exception {
         Map<String, String> config = configState.connectorConfig(connName);
 
         ConnectorConfig connConfig = worker.isSinkConnector(connName) ?
@@ -374,12 +410,12 @@ public class StandaloneHerder extends AbstractHerder {
         return worker.connectorTaskConfigs(connName, connConfig);
     }
 
-    private void createConnectorTasks(String connName) {
+    private void createConnectorTasks(String connName) throws Exception {
         List<ConnectorTaskId> taskIds = configState.tasks(connName);
         createConnectorTasks(connName, taskIds);
     }
 
-    private void createConnectorTasks(String connName, Collection<ConnectorTaskId> taskIds) {
+    private void createConnectorTasks(String connName, Collection<ConnectorTaskId> taskIds) throws Exception {
         Map<String, String> connConfigs = configState.connectorConfig(connName);
         for (ConnectorTaskId taskId : taskIds) {
             startTask(taskId, connConfigs);
@@ -387,13 +423,20 @@ public class StandaloneHerder extends AbstractHerder {
     }
 
     private boolean startTask(ConnectorTaskId taskId, Map<String, String> connProps) {
+        Map<String, String> taskProps;
+        try {
+            taskProps = configState.taskConfig(taskId);
+        } catch (Exception e) {
+            log.error("Unable to transform configuration for " + taskId, e);
+            return false;
+        }
         switch (connectorType(connProps)) {
             case SINK:
                 return worker.startSinkTask(
                         taskId,
                         configState,
                         connProps,
-                        configState.taskConfig(taskId),
+                        taskProps,
                         this,
                         configState.targetState(taskId.connector())
                 );
@@ -402,7 +445,7 @@ public class StandaloneHerder extends AbstractHerder {
                         taskId,
                         configState,
                         connProps,
-                        configState.taskConfig(taskId),
+                        taskProps,
                         this,
                         configState.targetState(taskId.connector())
                 );
@@ -420,7 +463,7 @@ public class StandaloneHerder extends AbstractHerder {
         }
     }
 
-    private void updateConnectorTasks(String connName) {
+    private void updateConnectorTasks(String connName) throws Exception {
         if (!worker.isRunning(connName)) {
             log.info("Skipping update of connector {} since it is not running", connName);
             return;
@@ -481,7 +524,13 @@ public class StandaloneHerder extends AbstractHerder {
                     }
 
                     if (newState == TargetState.STARTED) {
-                        requestExecutorService.submit(() -> updateConnectorTasks(connector));
+                        requestExecutorService.submit(() -> {
+                            try {
+                                updateConnectorTasks(connector);
+                            } catch (Exception e) {
+                                log.error("Unable to generate task configs for {}", connector, e);
+                            }
+                        });
                     }
                 });
             }
@@ -529,7 +578,13 @@ public class StandaloneHerder extends AbstractHerder {
 
     @Override
     public void tasksConfig(String connName, Callback<Map<ConnectorTaskId, Map<String, String>>> callback) {
-        Map<ConnectorTaskId, Map<String, String>> tasksConfig = buildTasksConfig(connName);
+        Map<ConnectorTaskId, Map<String, String>> tasksConfig;
+        try {
+            tasksConfig = buildTasksConfig(connName);
+        } catch (Exception e) {
+            callback.onCompletion(new ConnectException("Failed to transform config for " + connName, e), null);
+            return;
+        }
         if (tasksConfig.isEmpty()) {
             callback.onCompletion(new NotFoundException("Connector " + connName + " not found"), tasksConfig);
             return;

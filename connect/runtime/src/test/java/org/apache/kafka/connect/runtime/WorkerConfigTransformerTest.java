@@ -17,7 +17,7 @@
 package org.apache.kafka.connect.runtime;
 
 import org.apache.kafka.common.config.ConfigData;
-import org.apache.kafka.common.config.provider.ConfigProvider;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConfigProvider;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -27,7 +27,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
 import static org.apache.kafka.connect.runtime.ConnectorConfig.CONFIG_RELOAD_ACTION_CONFIG;
 import static org.apache.kafka.connect.runtime.ConnectorConfig.CONFIG_RELOAD_ACTION_NONE;
@@ -58,15 +57,20 @@ public class WorkerConfigTransformerTest {
     private Worker worker;
     @Mock
     private HerderRequest requestId;
+    @Mock
+    private IsolatedConfigProvider configProvider;
     private WorkerConfigTransformer configTransformer;
 
     @Before
     public void setup() {
-        configTransformer = new WorkerConfigTransformer(worker, Collections.singletonMap("test", new TestConfigProvider()));
+        configTransformer = new WorkerConfigTransformer(worker, Collections.singletonMap("test", configProvider));
     }
 
     @Test
-    public void testReplaceVariable() {
+    public void testReplaceVariable() throws Exception {
+        // Setup
+        when(configProvider.get(TEST_PATH, Collections.singleton(TEST_KEY)))
+                .thenReturn(new ConfigData(Collections.singletonMap(TEST_KEY, TEST_RESULT)));
         // Execution
         Map<String, String> result = configTransformer.transform(MY_CONNECTOR, Collections.singletonMap(MY_KEY, "${test:testPath:testKey}"));
 
@@ -75,7 +79,11 @@ public class WorkerConfigTransformerTest {
     }
 
     @Test
-    public void testReplaceVariableWithTTL() {
+    public void testReplaceVariableWithTTL() throws Exception {
+        // Setup
+        when(configProvider.get(TEST_PATH, Collections.singleton(TEST_KEY_WITH_TTL)))
+                .thenReturn(new ConfigData(Collections.singletonMap(TEST_KEY_WITH_TTL, TEST_RESULT_WITH_TTL), 1L));
+
         // Execution
         Map<String, String> props = new HashMap<>();
         props.put(MY_KEY, "${test:testPath:testKeyWithTTL}");
@@ -87,10 +95,12 @@ public class WorkerConfigTransformerTest {
     }
 
     @Test
-    public void testReplaceVariableWithTTLAndScheduleRestart() {
+    public void testReplaceVariableWithTTLAndScheduleRestart() throws Exception {
         // Setup
         when(worker.herder()).thenReturn(herder);
         when(herder.restartConnector(eq(1L), eq(MY_CONNECTOR), notNull())).thenReturn(requestId);
+        when(configProvider.get(TEST_PATH, Collections.singleton(TEST_KEY_WITH_TTL)))
+                .thenReturn(new ConfigData(Collections.singletonMap(TEST_KEY_WITH_TTL, TEST_RESULT_WITH_TTL), 1L));
 
         // Execution
         Map<String, String> result = configTransformer.transform(MY_CONNECTOR, Collections.singletonMap(MY_KEY, "${test:testPath:testKeyWithTTL}"));
@@ -101,11 +111,13 @@ public class WorkerConfigTransformerTest {
     }
 
     @Test
-    public void testReplaceVariableWithTTLFirstCancelThenScheduleRestart() {
+    public void testReplaceVariableWithTTLFirstCancelThenScheduleRestart() throws Exception {
         // Setup
         when(worker.herder()).thenReturn(herder);
         when(herder.restartConnector(eq(1L), eq(MY_CONNECTOR), notNull())).thenReturn(requestId);
         when(herder.restartConnector(eq(10L), eq(MY_CONNECTOR), notNull())).thenReturn(requestId);
+        when(configProvider.get(TEST_PATH, Collections.singleton(TEST_KEY_WITH_TTL)))
+                .thenReturn(new ConfigData(Collections.singletonMap(TEST_KEY_WITH_TTL, TEST_RESULT_WITH_TTL), 1L));
 
         // Execution
         Map<String, String> result = configTransformer.transform(MY_CONNECTOR, Collections.singletonMap(MY_KEY, "${test:testPath:testKeyWithTTL}"));
@@ -113,6 +125,8 @@ public class WorkerConfigTransformerTest {
         // Assertions
         assertEquals(TEST_RESULT_WITH_TTL, result.get(MY_KEY));
         verify(herder).restartConnector(eq(1L), eq(MY_CONNECTOR), notNull());
+        when(configProvider.get(TEST_PATH, Collections.singleton(TEST_KEY_WITH_LONGER_TTL)))
+                .thenReturn(new ConfigData(Collections.singletonMap(TEST_KEY_WITH_LONGER_TTL, TEST_RESULT_WITH_LONGER_TTL), 10L));
 
         // Execution
         result = configTransformer.transform(MY_CONNECTOR, Collections.singletonMap(MY_KEY, "${test:testPath:testKeyWithLongerTTL}"));
@@ -124,37 +138,7 @@ public class WorkerConfigTransformerTest {
     }
 
     @Test
-    public void testTransformNullConfiguration() {
+    public void testTransformNullConfiguration() throws Exception {
         assertNull(configTransformer.transform(MY_CONNECTOR, null));
-    }
-
-    public static class TestConfigProvider implements ConfigProvider {
-
-        @Override
-        public void configure(Map<String, ?> configs) {
-        }
-
-        @Override
-        public ConfigData get(String path) {
-            return null;
-        }
-
-        @Override
-        public ConfigData get(String path, Set<String> keys) {
-            if (path.equals(TEST_PATH)) {
-                if (keys.contains(TEST_KEY)) {
-                    return new ConfigData(Collections.singletonMap(TEST_KEY, TEST_RESULT));
-                } else if (keys.contains(TEST_KEY_WITH_TTL)) {
-                    return new ConfigData(Collections.singletonMap(TEST_KEY_WITH_TTL, TEST_RESULT_WITH_TTL), 1L);
-                } else if (keys.contains(TEST_KEY_WITH_LONGER_TTL)) {
-                    return new ConfigData(Collections.singletonMap(TEST_KEY_WITH_LONGER_TTL, TEST_RESULT_WITH_LONGER_TTL), 10L);
-                }
-            }
-            return new ConfigData(Collections.emptyMap());
-        }
-
-        @Override
-        public void close() {
-        }
     }
 }

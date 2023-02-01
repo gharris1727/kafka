@@ -853,7 +853,12 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                 if (!configState.contains(connName)) {
                     callback.onCompletion(new NotFoundException("Connector " + connName + " not found"), null);
                 } else {
-                    callback.onCompletion(null, buildTasksConfig(connName));
+                    try {
+                        Map<ConnectorTaskId, Map<String, String>> result = buildTasksConfig(connName);
+                        callback.onCompletion(null, result);
+                    } catch (Exception e) {
+                        callback.onCompletion(new ConnectException("Connector " + connName + " unable to generate task configs", e), null);
+                    }
                 }
                 return null;
             },
@@ -1715,7 +1720,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
         return diff;
     }
 
-    private boolean startTask(ConnectorTaskId taskId) {
+    private boolean startTask(ConnectorTaskId taskId) throws Exception {
         log.info("Starting task {}", taskId);
         Map<String, String> connProps = configState.connectorConfig(taskId.connector());
         switch (connectorType(connProps)) {
@@ -1792,7 +1797,13 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
     // The callback is invoked after the connector has finished startup and generated task configs, or failed in the process.
     private void startConnector(String connectorName, Callback<Void> callback) {
         log.info("Starting connector {}", connectorName);
-        final Map<String, String> configProps = configState.connectorConfig(connectorName);
+        final Map<String, String> configProps;
+        try {
+            configProps = configState.connectorConfig(connectorName);
+        } catch (Exception e) {
+            callback.onCompletion(new ConnectException("Unable to transform connector config", e), null);
+            return;
+        }
         final CloseableConnectorContext ctx = new HerderConnectorContext(this, connectorName);
         final TargetState initialState = configState.targetState(connectorName);
         final Callback<TargetState> onInitialStateChange = (error, newState) -> {
@@ -2404,7 +2415,14 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
     }
 
     private boolean isSourceConnector(String connName) {
-        return ConnectorType.SOURCE.equals(connectorType(configState.connectorConfig(connName)));
+        Map<String, String> connConfig;
+        try {
+            connConfig = configState.connectorConfig(connName);
+        } catch (Exception e) {
+            log.error("Failed to transform connector config for " + connName);
+            return false;
+        }
+        return ConnectorType.SOURCE.equals(connectorType(connConfig));
     }
 
     /**
@@ -2478,7 +2496,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
          * and may only be invoked once.
          * @throws IllegalStateException if invoked multiple times
          */
-        public void start() {
+        public void start() throws Exception {
             if (fencingFuture != null) {
                 throw new IllegalStateException("Cannot invoke start() multiple times");
             }

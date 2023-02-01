@@ -147,7 +147,7 @@ public class ClusterConfigState {
      * @param connector name of the connector
      * @return a map containing configuration parameters
      */
-    public Map<String, String> connectorConfig(String connector) {
+    public Map<String, String> connectorConfig(String connector) throws Exception {
         Map<String, String> configs = connectorConfigs.get(connector);
         if (configTransformer != null) {
             configs = configTransformer.transform(connector, configs);
@@ -176,7 +176,7 @@ public class ClusterConfigState {
      * @param task id of the task
      * @return a map containing configuration parameters
      */
-    public Map<String, String> taskConfig(ConnectorTaskId task) {
+    public Map<String, String> taskConfig(ConnectorTaskId task) throws Exception {
         Map<String, String> configs = taskConfigs.get(task);
         if (configTransformer != null) {
             configs = configTransformer.transform(task.connector(), configs);
@@ -196,7 +196,7 @@ public class ClusterConfigState {
      * @param connector name of the connector
      * @return a list of task configurations
      */
-    public List<Map<String, String>> allTaskConfigs(String connector) {
+    public List<Map<String, String>> allTaskConfigs(String connector) throws Exception {
         Map<Integer, Map<String, String>> taskConfigs = new TreeMap<>();
         for (Map.Entry<ConnectorTaskId, Map<String, String>> taskConfigEntry : this.taskConfigs.entrySet()) {
             if (taskConfigEntry.getKey().connector().equals(connector)) {

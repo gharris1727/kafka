@@ -29,7 +29,6 @@ import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.MetricNameTemplate;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigValue;
-import org.apache.kafka.common.config.provider.ConfigProvider;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.connector.Connector;
@@ -41,6 +40,7 @@ import org.apache.kafka.connect.health.ConnectorType;
 import org.apache.kafka.connect.json.JsonConverter;
 import org.apache.kafka.connect.json.JsonConverterConfig;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConfigProvider;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
@@ -180,9 +180,9 @@ public class Worker {
 
     private WorkerConfigTransformer initConfigTransformer() {
         final List<String> providerNames = config.getList(WorkerConfig.CONFIG_PROVIDERS_CONFIG);
-        Map<String, ConfigProvider> providerMap = new HashMap<>();
+        Map<String, IsolatedConfigProvider> providerMap = new HashMap<>();
         for (String providerName : providerNames) {
-            ConfigProvider configProvider = plugins.newConfigProvider(
+            IsolatedConfigProvider configProvider = plugins.newConfigProvider(
                     config,
                     WorkerConfig.CONFIG_PROVIDERS_CONFIG + "." + providerName,
                     ClassLoaderUsage.PLUGINS
