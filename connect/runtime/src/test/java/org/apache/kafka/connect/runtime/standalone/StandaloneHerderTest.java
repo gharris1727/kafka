@@ -929,10 +929,10 @@ public class StandaloneHerderTest {
             Throwable cause = e.getCause();
             assertTrue(cause instanceof BadRequestException);
             assertEquals(
-                cause.getMessage(),
                 "Connector configuration is invalid and contains the following 1 error(s):\n" +
                     error + "\n" +
-                    "You can also find the above list of errors at the endpoint `/connector-plugins/{connectorType}/config/validate`"
+                    "You can also find the above list of errors at the endpoint `/connector-plugins/{connectorType}/config/validate`",
+                cause.getMessage()
             );
         }
 
