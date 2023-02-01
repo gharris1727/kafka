@@ -27,11 +27,11 @@ import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigTransformer;
 import org.apache.kafka.common.config.ConfigValue;
 import org.apache.kafka.connect.connector.Connector;
-import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.connector.policy.ConnectorClientConfigRequest;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.NotFoundException;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
+import org.apache.kafka.connect.runtime.isolation.IsolatedOverridePolicy;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceConnector;
 import org.apache.kafka.connect.runtime.isolation.LoaderSwap;
@@ -112,7 +112,7 @@ public abstract class AbstractHerder implements Herder, TaskStatus.Listener, Con
     private final String kafkaClusterId;
     protected final StatusBackingStore statusBackingStore;
     protected final ConfigBackingStore configBackingStore;
-    private final ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy;
+    private final IsolatedOverridePolicy connectorClientConfigOverridePolicy;
     protected volatile boolean running = false;
     private final ExecutorService connectorExecutor;
 
@@ -123,7 +123,7 @@ public abstract class AbstractHerder implements Herder, TaskStatus.Listener, Con
                           String kafkaClusterId,
                           StatusBackingStore statusBackingStore,
                           ConfigBackingStore configBackingStore,
-                          ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy) {
+                          IsolatedOverridePolicy connectorClientConfigOverridePolicy) {
         this.worker = worker;
         this.worker.herder = this;
         this.workerId = workerId;
@@ -541,38 +541,42 @@ public abstract class AbstractHerder implements Herder, TaskStatus.Listener, Con
             ConfigInfos consumerConfigInfos = null;
             ConfigInfos adminConfigInfos = null;
 
-            if (connectorUsesProducer(connectorType, connectorProps)) {
-                producerConfigInfos = validateClientOverrides(
-                    connName,
-                    ConnectorConfig.CONNECTOR_CLIENT_PRODUCER_OVERRIDES_PREFIX,
-                    connectorConfig,
-                    ProducerConfig.configDef(),
-                    connector.getClass(),
-                    connectorType,
-                    ConnectorClientConfigRequest.ClientType.PRODUCER,
-                    connectorClientConfigOverridePolicy);
-            }
-            if (connectorUsesAdmin(connectorType, connectorProps)) {
-                adminConfigInfos = validateClientOverrides(
-                    connName,
-                    ConnectorConfig.CONNECTOR_CLIENT_ADMIN_OVERRIDES_PREFIX,
-                    connectorConfig,
-                    AdminClientConfig.configDef(),
-                    connector.getClass(),
-                    connectorType,
-                    ConnectorClientConfigRequest.ClientType.ADMIN,
-                    connectorClientConfigOverridePolicy);
-            }
-            if (connectorUsesConsumer(connectorType, connectorProps)) {
-                consumerConfigInfos = validateClientOverrides(
-                    connName,
-                    ConnectorConfig.CONNECTOR_CLIENT_CONSUMER_OVERRIDES_PREFIX,
-                    connectorConfig,
-                    ConsumerConfig.configDef(),
-                    connector.getClass(),
-                    connectorType,
-                    ConnectorClientConfigRequest.ClientType.CONSUMER,
-                    connectorClientConfigOverridePolicy);
+            try {
+                if (connectorUsesProducer(connectorType, connectorProps)) {
+                    producerConfigInfos = validateClientOverrides(
+                            connName,
+                            ConnectorConfig.CONNECTOR_CLIENT_PRODUCER_OVERRIDES_PREFIX,
+                            connectorConfig,
+                            ProducerConfig.configDef(),
+                            connector.pluginClass(),
+                            connectorType,
+                            ConnectorClientConfigRequest.ClientType.PRODUCER,
+                            connectorClientConfigOverridePolicy);
+                }
+                if (connectorUsesAdmin(connectorType, connectorProps)) {
+                    adminConfigInfos = validateClientOverrides(
+                            connName,
+                            ConnectorConfig.CONNECTOR_CLIENT_ADMIN_OVERRIDES_PREFIX,
+                            connectorConfig,
+                            AdminClientConfig.configDef(),
+                            connector.pluginClass(),
+                            connectorType,
+                            ConnectorClientConfigRequest.ClientType.ADMIN,
+                            connectorClientConfigOverridePolicy);
+                }
+                if (connectorUsesConsumer(connectorType, connectorProps)) {
+                    consumerConfigInfos = validateClientOverrides(
+                            connName,
+                            ConnectorConfig.CONNECTOR_CLIENT_CONSUMER_OVERRIDES_PREFIX,
+                            connectorConfig,
+                            ConsumerConfig.configDef(),
+                            connector.pluginClass(),
+                            connectorType,
+                            ConnectorClientConfigRequest.ClientType.CONSUMER,
+                            connectorClientConfigOverridePolicy);
+                }
+            } catch (Exception e) {
+                throw new ConnectException("Unable to validate client overrides", e);
             }
             return mergeConfigInfos(connType, configInfos, producerConfigInfos, consumerConfigInfos, adminConfigInfos);
         }
@@ -599,7 +603,8 @@ public abstract class AbstractHerder implements Herder, TaskStatus.Listener, Con
                                                       Class<? extends Connector> connectorClass,
                                                       org.apache.kafka.connect.health.ConnectorType connectorType,
                                                       ConnectorClientConfigRequest.ClientType clientType,
-                                                      ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy) {
+                                                      IsolatedOverridePolicy connectorClientConfigOverridePolicy
+    ) throws Exception {
         int errorCount = 0;
         List<ConfigInfo> configInfoList = new LinkedList<>();
         Map<String, ConfigKey> configKeys = configDef.configKeys();

@@ -33,7 +33,6 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.connector.Connector;
 import org.apache.kafka.connect.connector.Task;
-import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.connector.policy.ConnectorClientConfigRequest;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.health.ConnectorType;
@@ -44,6 +43,7 @@ import org.apache.kafka.connect.runtime.isolation.IsolatedConfigProvider;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedOverridePolicy;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedTask;
@@ -137,7 +137,7 @@ public class Worker {
     private final ConcurrentMap<ConnectorTaskId, WorkerTask> tasks = new ConcurrentHashMap<>();
     private Optional<SourceTaskOffsetCommitter> sourceTaskOffsetCommitter;
     private final WorkerConfigTransformer workerConfigTransformer;
-    private final ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy;
+    private final IsolatedOverridePolicy connectorClientConfigOverridePolicy;
 
     public Worker(
         String workerId,
@@ -145,7 +145,7 @@ public class Worker {
         Plugins plugins,
         WorkerConfig config,
         OffsetBackingStore globalOffsetBackingStore,
-        ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy) {
+        IsolatedOverridePolicy connectorClientConfigOverridePolicy) {
         this(workerId, time, plugins, config, globalOffsetBackingStore, Executors.newCachedThreadPool(), connectorClientConfigOverridePolicy);
     }
 
@@ -156,7 +156,7 @@ public class Worker {
             WorkerConfig config,
             OffsetBackingStore globalOffsetBackingStore,
             ExecutorService executorService,
-            ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy
+            IsolatedOverridePolicy connectorClientConfigOverridePolicy
     ) {
         this.kafkaClusterId = config.kafkaClusterId();
         this.metrics = new ConnectMetrics(workerId, config, time, kafkaClusterId);
@@ -732,7 +732,7 @@ public class Worker {
                                                               WorkerConfig config,
                                                               ConnectorConfig connConfig,
                                                               Class<? extends Connector>  connectorClass,
-                                                              ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                                                              IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                                                               String clusterId) {
         Map<String, Object> result = baseProducerConfigs(id.connector(), "connector-producer-" + id, config, connConfig, connectorClass, connectorClientConfigOverridePolicy, clusterId);
         // The base producer properties forcibly disable idempotence; remove it from those properties
@@ -767,7 +767,7 @@ public class Worker {
                                                WorkerConfig config,
                                                ConnectorConfig connConfig,
                                                Class<? extends Connector>  connectorClass,
-                                               ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                                               IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                                                String clusterId) {
         Map<String, Object> producerProps = new HashMap<>();
         producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, config.bootstrapServers());
@@ -806,7 +806,7 @@ public class Worker {
                                                                        WorkerConfig config,
                                                                        ConnectorConfig connConfig,
                                                                        Class<? extends Connector> connectorClass,
-                                                                       ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                                                                       IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                                                                        String clusterId) {
         Map<String, Object> result = baseConsumerConfigs(
                 connName, defaultClientId, config, connConfig, connectorClass,
@@ -824,7 +824,7 @@ public class Worker {
                                                                    WorkerConfig config,
                                                                    ConnectorConfig connConfig,
                                                                    Class<? extends Connector> connectorClass,
-                                                                   ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                                                                   IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                                                                    String clusterId) {
         Map<String, Object> result = baseConsumerConfigs(
                 connName, defaultClientId, config, connConfig, connectorClass,
@@ -841,7 +841,7 @@ public class Worker {
                                                WorkerConfig config,
                                                ConnectorConfig connConfig,
                                                Class<? extends Connector> connectorClass,
-                                               ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                                               IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                                                String clusterId,
                                                ConnectorType connectorType) {
         // Include any unknown worker configs so consumer configs can be set globally on the worker
@@ -874,7 +874,7 @@ public class Worker {
                                             WorkerConfig config,
                                             ConnectorConfig connConfig,
                                             Class<? extends Connector> connectorClass,
-                                            ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                                            IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                                             String clusterId,
                                             ConnectorType connectorType) {
         Map<String, Object> adminProps = new HashMap<>();
@@ -914,7 +914,7 @@ public class Worker {
                                                                       String clientConfigPrefix,
                                                                       ConnectorType connectorType,
                                                                       ConnectorClientConfigRequest.ClientType clientType,
-                                                                      ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy) {
+                                                                      IsolatedOverridePolicy connectorClientConfigOverridePolicy) {
         Map<String, Object> clientOverrides = connConfig.originalsWithPrefix(clientConfigPrefix);
         ConnectorClientConfigRequest connectorClientConfigRequest = new ConnectorClientConfigRequest(
             connName,
@@ -923,7 +923,12 @@ public class Worker {
             clientOverrides,
             clientType
         );
-        List<ConfigValue> configValues = connectorClientConfigOverridePolicy.validate(connectorClientConfigRequest);
+        List<ConfigValue> configValues;
+        try {
+            configValues = connectorClientConfigOverridePolicy.validate(connectorClientConfigRequest);
+        } catch (Exception e) {
+            throw new ConnectException("Failed to apply Client Config overrides", e);
+        }
         List<ConfigValue> errorConfigs = configValues.stream().
             filter(configValue -> configValue.errorMessages().size() > 0).collect(Collectors.toList());
         // These should be caught when the herder validates the connector configuration, but just in case

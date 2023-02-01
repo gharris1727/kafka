@@ -34,8 +34,6 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.connector.Connector;
 import org.apache.kafka.connect.connector.ConnectorContext;
 import org.apache.kafka.connect.connector.Task;
-import org.apache.kafka.connect.connector.policy.AllConnectorClientConfigOverridePolicy;
-import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.connector.policy.NoneConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.health.ConnectorType;
@@ -46,6 +44,7 @@ import org.apache.kafka.connect.runtime.isolation.IsolatedConfigProvider;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedOverridePolicy;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceConnector;
@@ -156,8 +155,10 @@ public class WorkerTest {
     private static final ConnectorTaskId TASK_ID = new ConnectorTaskId("job", 0);
     private static final String WORKER_ID = "localhost:8083";
     private static final String CLUSTER_ID = "test-cluster";
-    private final ConnectorClientConfigOverridePolicy noneConnectorClientConfigOverridePolicy = new NoneConnectorClientConfigOverridePolicy();
-    private final ConnectorClientConfigOverridePolicy allConnectorClientConfigOverridePolicy = new AllConnectorClientConfigOverridePolicy();
+    @Mock
+    private IsolatedOverridePolicy noneConnectorClientConfigOverridePolicy;
+    @Mock
+    private IsolatedOverridePolicy allConnectorClientConfigOverridePolicy;
 
     private final Map<String, String> workerProps = new HashMap<>();
     private WorkerConfig config;
@@ -1058,7 +1059,7 @@ public class WorkerTest {
     }
 
     @Test
-    public void testConsumerConfigsClientOverridesWithNonePolicy() {
+    public void testConsumerConfigsClientOverridesWithNonePolicy() throws Exception {
         Map<String, String> props = new HashMap<>(workerProps);
         props.put("consumer.auto.offset.reset", "latest");
         props.put("consumer.max.poll.records", "5000");
@@ -1068,6 +1069,7 @@ public class WorkerTest {
         connConfig.put("max.poll.records", "5000");
         connConfig.put("max.poll.interval.ms", "1000");
         when(connectorConfig.originalsWithPrefix(ConnectorConfig.CONNECTOR_CLIENT_CONSUMER_OVERRIDES_PREFIX)).thenReturn(connConfig);
+        when(noneConnectorClientConfigOverridePolicy.validate(any())).thenAnswer(invocation -> new NoneConnectorClientConfigOverridePolicy().validate(invocation.getArgument(0)));
 
         assertThrows(ConnectException.class, () -> Worker.baseConsumerConfigs(CONNECTOR_ID, "connector-consumer-" + TASK_ID,
                 configWithOverrides, connectorConfig, null, noneConnectorClientConfigOverridePolicy, CLUSTER_ID, ConnectorType.SINK));
@@ -1100,7 +1102,7 @@ public class WorkerTest {
     }
 
     @Test
-    public void testAdminConfigsClientOverridesWithNonePolicy() {
+    public void testAdminConfigsClientOverridesWithNonePolicy() throws Exception {
         Map<String, String> props = new HashMap<>(workerProps);
         props.put("admin.client.id", "testid");
         props.put("admin.metadata.max.age.ms", "5000");
@@ -1108,6 +1110,7 @@ public class WorkerTest {
         Map<String, Object> connConfig = Collections.singletonMap("metadata.max.age.ms", "10000");
 
         when(connectorConfig.originalsWithPrefix(ConnectorConfig.CONNECTOR_CLIENT_ADMIN_OVERRIDES_PREFIX)).thenReturn(connConfig);
+        when(noneConnectorClientConfigOverridePolicy.validate(any())).thenAnswer(invocation -> new NoneConnectorClientConfigOverridePolicy().validate(invocation.getArgument(0)));
 
         assertThrows(ConnectException.class, () -> Worker.adminConfigs("test",
                 "", configWithOverrides, connectorConfig, null, noneConnectorClientConfigOverridePolicy, CLUSTER_ID, ConnectorType.SINK));

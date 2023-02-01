@@ -30,7 +30,6 @@ import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.ThreadUtils;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
-import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.errors.AlreadyExistsException;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.NotFoundException;
@@ -52,6 +51,7 @@ import org.apache.kafka.connect.runtime.TaskStatus;
 import org.apache.kafka.connect.runtime.Worker;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceConnector;
+import org.apache.kafka.connect.runtime.isolation.IsolatedOverridePolicy;
 import org.apache.kafka.connect.storage.PrivilegedWriteException;
 import org.apache.kafka.connect.runtime.rest.InternalRequestSignature;
 import org.apache.kafka.connect.runtime.rest.RestClient;
@@ -242,7 +242,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                              ConfigBackingStore configBackingStore,
                              String restUrl,
                              RestClient restClient,
-                             ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                             IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                              AutoCloseable... uponShutdown) {
         this(config, worker, worker.workerId(), kafkaClusterId, statusBackingStore, configBackingStore,
              null, restUrl, restClient, worker.metrics(),
@@ -262,7 +262,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                       RestClient restClient,
                       ConnectMetrics metrics,
                       Time time,
-                      ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                      IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                       AutoCloseable... uponShutdown) {
         super(worker, workerId, kafkaClusterId, statusBackingStore, configBackingStore, connectorClientConfigOverridePolicy);
 

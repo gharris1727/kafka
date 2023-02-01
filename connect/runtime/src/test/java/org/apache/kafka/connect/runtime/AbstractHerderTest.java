@@ -27,7 +27,6 @@ import org.apache.kafka.common.config.provider.DirectoryConfigProvider;
 import org.apache.kafka.common.security.oauthbearer.internals.unsecured.OAuthBearerUnsecuredLoginCallbackHandler;
 import org.apache.kafka.connect.connector.Connector;
 import org.apache.kafka.connect.connector.policy.AllConnectorClientConfigOverridePolicy;
-import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.connector.policy.NoneConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.connector.policy.PrincipalConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -36,6 +35,7 @@ import org.apache.kafka.connect.runtime.isolation.IsolatedConfigProvider;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedOverridePolicy;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceConnector;
 import org.apache.kafka.connect.runtime.isolation.LoaderSwap;
@@ -146,8 +146,7 @@ public class AbstractHerderTest {
     private final String kafkaClusterId = "I4ZmrWqfT2e-upky_4fdPA";
     private final int generation = 5;
     private final String connectorName = "connector";
-    private final ConnectorClientConfigOverridePolicy noneConnectorClientConfigOverridePolicy = new NoneConnectorClientConfigOverridePolicy();
-
+    @Mock private IsolatedOverridePolicy overridePolicy;
     @Mock private Worker worker;
     @Mock private WorkerConfigTransformer transformer;
     @Mock private ConfigBackingStore configStore;
@@ -159,7 +158,7 @@ public class AbstractHerderTest {
     @Test
     public void testConnectors() {
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
         when(configStore.snapshot()).thenReturn(SNAPSHOT);
@@ -171,7 +170,7 @@ public class AbstractHerderTest {
         ConnectorTaskId taskId = new ConnectorTaskId(connectorName, 0);
 
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
         IsolatedConnector<?> connector = mockConnector(SampleSourceConnector.class);
@@ -209,7 +208,7 @@ public class AbstractHerderTest {
         ConnectorTaskId taskId = new ConnectorTaskId(connectorName, 0);
 
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
         when(plugins.newConnector(anyString())).thenThrow(new ConnectException("Unable to find class"));
@@ -242,7 +241,7 @@ public class AbstractHerderTest {
     @Test
     public void testConnectorInfo() throws Exception {
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
         IsolatedConnector<?> connector = mockConnector(SampleSourceConnector.class);
@@ -263,7 +262,7 @@ public class AbstractHerderTest {
     @Test
     public void testConnectorInfoMissingPlugin() {
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
         when(plugins.newConnector(anyString())).thenThrow(new ConnectException("No class found"));
@@ -285,7 +284,7 @@ public class AbstractHerderTest {
         String workerId = "workerId";
 
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
         final ArgumentCaptor<TaskStatus> taskStatusArgumentCaptor = ArgumentCaptor.forClass(TaskStatus.class);
@@ -307,7 +306,7 @@ public class AbstractHerderTest {
         String connectorName = "UnknownConnector";
         RestartRequest restartRequest = new RestartRequest(connectorName, false, true);
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
         when(statusStore.get(connectorName)).thenReturn(null);
@@ -319,7 +318,7 @@ public class AbstractHerderTest {
 
     @Test
     public void testConfigValidationNullConfig() throws Exception {
-        AbstractHerder herder = createConfigValidationHerder(SampleSourceConnector.class, noneConnectorClientConfigOverridePolicy);
+        AbstractHerder herder = createConfigValidationHerder(SampleSourceConnector.class, overridePolicy);
 
         Map<String, String> config = new HashMap<>();
         config.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, SampleSourceConnector.class.getName());
@@ -336,7 +335,7 @@ public class AbstractHerderTest {
 
     @Test
     public void testConfigValidationMultipleNullConfig() throws Exception {
-        AbstractHerder herder = createConfigValidationHerder(SampleSourceConnector.class, noneConnectorClientConfigOverridePolicy);
+        AbstractHerder herder = createConfigValidationHerder(SampleSourceConnector.class, overridePolicy);
 
         Map<String, String> config = new HashMap<>();
         config.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, SampleSourceConnector.class.getName());
@@ -364,7 +363,7 @@ public class AbstractHerderTest {
         taskStatuses.add(new TaskStatus(taskId2, AbstractStatus.State.FAILED, workerId, generation));
 
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
         when(herder.rawConfig(connectorName)).thenReturn(null);
@@ -396,7 +395,7 @@ public class AbstractHerderTest {
         taskStatuses.add(new TaskStatus(taskId2, AbstractStatus.State.FAILED, workerId, generation));
 
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
         when(herder.rawConfig(connectorName)).thenReturn(null);
@@ -426,7 +425,8 @@ public class AbstractHerderTest {
     @Test
     public void testConfigValidationMissingName() throws Exception {
         final Class<? extends Connector> connectorClass = SampleSourceConnector.class;
-        AbstractHerder herder = createConfigValidationHerder(connectorClass, noneConnectorClientConfigOverridePolicy);
+        when(overridePolicy.validate(any())).thenAnswer(invocation -> new NoneConnectorClientConfigOverridePolicy().validate(invocation.getArgument(0)));
+        AbstractHerder herder = createConfigValidationHerder(connectorClass, overridePolicy);
 
         Map<String, String> config = Collections.singletonMap(ConnectorConfig.CONNECTOR_CLASS_CONFIG, connectorClass.getName());
         ConfigInfos result = herder.validateConnectorConfig(config, false);
@@ -457,7 +457,7 @@ public class AbstractHerderTest {
     @Test
     public void testConfigValidationInvalidTopics() throws Exception {
         final Class<? extends Connector> connectorClass = SampleSinkConnector.class;
-        AbstractHerder herder = createConfigValidationHerder(connectorClass, noneConnectorClientConfigOverridePolicy);
+        AbstractHerder herder = createConfigValidationHerder(connectorClass, overridePolicy);
 
         Map<String, String> config = new HashMap<>();
         config.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, connectorClass.getName());
@@ -472,7 +472,7 @@ public class AbstractHerderTest {
     @Test
     public void testConfigValidationTopicsWithDlq() throws Exception {
         final Class<? extends Connector> connectorClass = SampleSinkConnector.class;
-        AbstractHerder herder = createConfigValidationHerder(connectorClass, noneConnectorClientConfigOverridePolicy);
+        AbstractHerder herder = createConfigValidationHerder(connectorClass, overridePolicy);
 
         Map<String, String> config = new HashMap<>();
         config.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, connectorClass.getName());
@@ -487,7 +487,7 @@ public class AbstractHerderTest {
     @Test
     public void testConfigValidationTopicsRegexWithDlq() throws Exception {
         final Class<? extends Connector> connectorClass = SampleSinkConnector.class;
-        AbstractHerder herder = createConfigValidationHerder(connectorClass, noneConnectorClientConfigOverridePolicy);
+        AbstractHerder herder = createConfigValidationHerder(connectorClass, overridePolicy);
 
         Map<String, String> config = new HashMap<>();
         config.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, connectorClass.getName());
@@ -502,7 +502,7 @@ public class AbstractHerderTest {
     @Test
     public void testConfigValidationTransformsExtendResults() throws Exception {
         final Class<? extends Connector> connectorClass = SampleSourceConnector.class;
-        AbstractHerder herder = createConfigValidationHerder(connectorClass, noneConnectorClientConfigOverridePolicy);
+        AbstractHerder herder = createConfigValidationHerder(connectorClass, overridePolicy);
 
         // 2 transform aliases defined -> 2 plugin lookups
         when(plugins.transformations()).thenReturn(Collections.singleton(transformationPluginDesc()));
@@ -554,7 +554,8 @@ public class AbstractHerderTest {
     @Test
     public void testConfigValidationPredicatesExtendResults() throws Exception {
         final Class<? extends Connector> connectorClass = SampleSourceConnector.class;
-        AbstractHerder herder = createConfigValidationHerder(connectorClass, noneConnectorClientConfigOverridePolicy);
+        when(overridePolicy.validate(any())).thenAnswer(invocation -> new NoneConnectorClientConfigOverridePolicy().validate(invocation.getArgument(0)));
+        AbstractHerder herder = createConfigValidationHerder(connectorClass, overridePolicy);
 
         when(plugins.transformations()).thenReturn(Collections.singleton(transformationPluginDesc()));
         when(plugins.predicates()).thenReturn(Collections.singleton(predicatePluginDesc()));
@@ -626,7 +627,8 @@ public class AbstractHerderTest {
     @Test
     public void testConfigValidationPrincipalOnlyOverride() throws Exception {
         final Class<? extends Connector> connectorClass = SampleSourceConnector.class;
-        AbstractHerder herder = createConfigValidationHerder(connectorClass, new PrincipalConnectorClientConfigOverridePolicy());
+        when(overridePolicy.validate(any())).thenAnswer(invocation -> new PrincipalConnectorClientConfigOverridePolicy().validate(invocation.getArgument(0)));
+        AbstractHerder herder = createConfigValidationHerder(connectorClass, overridePolicy);
 
         Map<String, String> config = new HashMap<>();
         config.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, connectorClass.getName());
@@ -668,7 +670,8 @@ public class AbstractHerderTest {
     @Test
     public void testConfigValidationAllOverride() throws Exception {
         final Class<? extends Connector> connectorClass = SampleSourceConnector.class;
-        AbstractHerder herder = createConfigValidationHerder(connectorClass, new AllConnectorClientConfigOverridePolicy());
+        when(overridePolicy.validate(any())).thenAnswer(invocation -> new AllConnectorClientConfigOverridePolicy().validate(invocation.getArgument(0)));
+        AbstractHerder herder = createConfigValidationHerder(connectorClass, overridePolicy);
 
         Map<String, String> config = new HashMap<>();
         config.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, connectorClass.getName());
@@ -901,7 +904,7 @@ public class AbstractHerderTest {
     public void testConnectorPluginConfig() throws Exception {
 
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
         when(plugins.newPlugin(anyString())).then(invocation -> {
@@ -946,7 +949,7 @@ public class AbstractHerderTest {
     public void testGetConnectorConfigDefWithBadName() throws Exception {
         String connName = "AnotherPlugin";
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
         when(worker.getPlugins()).thenReturn(plugins);
         when(plugins.newPlugin(anyString())).thenThrow(new ClassNotFoundException());
@@ -957,7 +960,7 @@ public class AbstractHerderTest {
     public void testGetConnectorConfigDefWithInvalidPluginType() throws Exception {
         String connName = "AnotherPlugin";
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
         when(worker.getPlugins()).thenReturn(plugins);
         when(plugins.newPlugin(anyString())).thenReturn(new DirectoryConfigProvider());
@@ -968,7 +971,7 @@ public class AbstractHerderTest {
     public void testGetConnectorTypeWithMissingPlugin() {
         String connName = "AnotherPlugin";
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
         when(worker.getPlugins()).thenReturn(plugins);
         when(plugins.newConnector(anyString())).thenThrow(new ConnectException("No class found"));
@@ -978,7 +981,7 @@ public class AbstractHerderTest {
     @Test
     public void testGetConnectorTypeWithNullConfig() {
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
         assertEquals(ConnectorType.UNKNOWN, herder.connectorType(null));
     }
@@ -986,7 +989,7 @@ public class AbstractHerderTest {
     @Test
     public void testGetConnectorTypeWithEmptyConfig() {
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()
-                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, noneConnectorClientConfigOverridePolicy)
+                .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
         assertEquals(ConnectorType.UNKNOWN, herder.connectorType(Collections.emptyMap()));
     }
@@ -1038,12 +1041,12 @@ public class AbstractHerderTest {
     }
 
     private AbstractHerder createConfigValidationHerder(Class<? extends Connector> connectorClass,
-                                                        ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy) throws Exception {
+                                                        IsolatedOverridePolicy connectorClientConfigOverridePolicy) throws Exception {
         return createConfigValidationHerder(connectorClass, connectorClientConfigOverridePolicy, 1);
     }
 
     private AbstractHerder createConfigValidationHerder(Class<? extends Connector> connectorClass,
-                                                        ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                                                        IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                                                         int countOfCallingNewConnector) throws Exception {
 
         AbstractHerder herder = mock(AbstractHerder.class, withSettings()

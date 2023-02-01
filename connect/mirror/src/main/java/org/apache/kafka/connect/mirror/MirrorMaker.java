@@ -19,7 +19,9 @@ package org.apache.kafka.connect.mirror;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.common.utils.Exit;
+import org.apache.kafka.connect.connector.policy.AllConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.runtime.Herder;
+import org.apache.kafka.connect.runtime.isolation.IsolatedOverridePolicy;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
 import org.apache.kafka.connect.runtime.Worker;
 import org.apache.kafka.connect.runtime.WorkerConfigTransformer;
@@ -33,8 +35,6 @@ import org.apache.kafka.connect.storage.ConfigBackingStore;
 import org.apache.kafka.connect.storage.KafkaConfigBackingStore;
 import org.apache.kafka.connect.storage.Converter;
 import org.apache.kafka.connect.util.ConnectUtils;
-import org.apache.kafka.connect.connector.policy.AllConnectorClientConfigOverridePolicy;
-import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 
 import org.apache.kafka.connect.util.SharedTopicAdmin;
 import org.slf4j.Logger;
@@ -90,9 +90,6 @@ public class MirrorMaker {
     private static final Logger log = LoggerFactory.getLogger(MirrorMaker.class);
 
     private static final long SHUTDOWN_TIMEOUT_SECONDS = 60L;
-    private static final ConnectorClientConfigOverridePolicy CLIENT_CONFIG_OVERRIDE_POLICY =
-            new AllConnectorClientConfigOverridePolicy();
-
     private static final List<Class<?>> CONNECTOR_CLASSES = Arrays.asList(
         MirrorSourceConnector.class,
         MirrorHeartbeatConnector.class,
@@ -243,7 +240,10 @@ public class MirrorMaker {
         SharedTopicAdmin sharedAdmin = new SharedTopicAdmin(adminProps);
         KafkaOffsetBackingStore offsetBackingStore = new KafkaOffsetBackingStore(sharedAdmin, () -> clientIdBase);
         offsetBackingStore.configure(distributedConfig);
-        Worker worker = new Worker(workerId, time, plugins, distributedConfig, offsetBackingStore, CLIENT_CONFIG_OVERRIDE_POLICY);
+        IsolatedOverridePolicy connectorClientConfigOverridePolicy = plugins.newOverridePolicy(
+                AllConnectorClientConfigOverridePolicy.class.getName(),
+                config);
+        Worker worker = new Worker(workerId, time, plugins, distributedConfig, offsetBackingStore, connectorClientConfigOverridePolicy);
         WorkerConfigTransformer configTransformer = worker.configTransformer();
         Converter internalValueConverter = worker.getInternalValueConverter();
         StatusBackingStore statusBackingStore = new KafkaStatusBackingStore(time, internalValueConverter, sharedAdmin, clientIdBase);
@@ -260,7 +260,7 @@ public class MirrorMaker {
         // Do not provide a restClient to the DistributedHerder to indicate that request forwarding is disabled
         Herder herder = new DistributedHerder(distributedConfig, time, worker,
                 kafkaClusterId, statusBackingStore, configBackingStore,
-                advertisedUrl, null, CLIENT_CONFIG_OVERRIDE_POLICY, sharedAdmin);
+                advertisedUrl, null, connectorClientConfigOverridePolicy, sharedAdmin);
         herders.put(sourceAndTarget, herder);
     }
 

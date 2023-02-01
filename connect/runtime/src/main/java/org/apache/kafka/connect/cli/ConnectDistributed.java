@@ -17,12 +17,12 @@
 package org.apache.kafka.connect.cli;
 
 import org.apache.kafka.common.utils.Time;
-import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.runtime.Herder;
 import org.apache.kafka.connect.runtime.Worker;
 import org.apache.kafka.connect.runtime.WorkerConfigTransformer;
 import org.apache.kafka.connect.runtime.distributed.DistributedConfig;
 import org.apache.kafka.connect.runtime.distributed.DistributedHerder;
+import org.apache.kafka.connect.runtime.isolation.IsolatedOverridePolicy;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
 import org.apache.kafka.connect.runtime.rest.RestClient;
 import org.apache.kafka.connect.runtime.rest.RestServer;
@@ -65,7 +65,7 @@ public class ConnectDistributed extends AbstractConnectCli<DistributedConfig> {
 
     @Override
     protected Herder createHerder(DistributedConfig config, String workerId, Plugins plugins,
-                                  ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                                  IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                                   RestServer restServer, RestClient restClient) {
 
         String kafkaClusterId = config.kafkaClusterId();

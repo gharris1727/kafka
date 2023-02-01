@@ -19,11 +19,11 @@ package org.apache.kafka.connect.cli;
 import org.apache.kafka.common.utils.Exit;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
-import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.runtime.Connect;
 import org.apache.kafka.connect.runtime.Herder;
 import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.runtime.WorkerInfo;
+import org.apache.kafka.connect.runtime.isolation.IsolatedOverridePolicy;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
 import org.apache.kafka.connect.runtime.rest.RestClient;
 import org.apache.kafka.connect.runtime.rest.RestServer;
@@ -71,7 +71,7 @@ public abstract class AbstractConnectCli<T extends WorkerConfig> {
     }
 
     protected abstract Herder createHerder(T config, String workerId, Plugins plugins,
-                                           ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                                           IsolatedOverridePolicy connectorClientConfigOverridePolicy,
                                            RestServer restServer, RestClient restClient);
 
     protected abstract T createConfig(Map<String, String> workerProps);
@@ -130,9 +130,9 @@ public abstract class AbstractConnectCli<T extends WorkerConfig> {
         URI advertisedUrl = restServer.advertisedUrl();
         String workerId = advertisedUrl.getHost() + ":" + advertisedUrl.getPort();
 
-        ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy = plugins.newPlugin(
+        IsolatedOverridePolicy connectorClientConfigOverridePolicy = plugins.newOverridePolicy(
                 config.getString(WorkerConfig.CONNECTOR_CLIENT_POLICY_CLASS_CONFIG),
-                config, ConnectorClientConfigOverridePolicy.class);
+                config);
 
         Herder herder = createHerder(config, workerId, plugins, connectorClientConfigOverridePolicy, restServer, restClient);
 
