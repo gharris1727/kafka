@@ -158,9 +158,9 @@ abstract class WorkerTask implements Runnable {
         Utils.closeQuietly(errorMetrics, "Error handling metrics");
     }
 
-    protected abstract void initializeAndStart();
+    protected abstract void initializeAndStart() throws Exception;
 
-    protected abstract void execute();
+    protected abstract void execute() throws Exception;
 
     protected abstract void close();
 
@@ -185,7 +185,7 @@ abstract class WorkerTask implements Runnable {
         }
     }
 
-    private void doRun() throws InterruptedException {
+    private void doRun() throws Exception {
         try {
             synchronized (this) {
                 if (stopping)

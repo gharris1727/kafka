@@ -39,6 +39,7 @@ import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.WorkerSinkTask.SinkTaskMetricsGroup;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperatorTest;
@@ -136,7 +137,7 @@ public class WorkerSinkTaskTest {
     private MockTime time;
     private WorkerSinkTask workerTask;
     @Mock
-    private SinkTask sinkTask;
+    private IsolatedSinkTask sinkTask;
     private Capture<WorkerSinkTaskContext> sinkTaskContext = EasyMock.newCapture();
     private WorkerConfig workerConfig;
     private MockConnectMetrics metrics;
@@ -1697,7 +1698,7 @@ public class WorkerSinkTaskTest {
     }
 
     @Test
-    public void testTopicsRegex() {
+    public void testTopicsRegex() throws Exception {
         Map<String, String> props = new HashMap<>(TASK_PROPS);
         props.remove("topics");
         props.put("topics.regex", "te.*");
@@ -1871,7 +1872,7 @@ public class WorkerSinkTaskTest {
         PowerMock.verifyAll();
     }
 
-    private void expectInitializeTask() {
+    private void expectInitializeTask() throws Exception {
         consumer.subscribe(EasyMock.eq(asList(TOPIC)), EasyMock.capture(rebalanceListener));
         PowerMock.expectLastCall();
 
@@ -1881,7 +1882,7 @@ public class WorkerSinkTaskTest {
         PowerMock.expectLastCall();
     }
 
-    private void expectRebalanceLossError(RuntimeException e) {
+    private void expectRebalanceLossError(RuntimeException e) throws Exception {
         sinkTask.close(new HashSet<>(INITIAL_ASSIGNMENT));
         EasyMock.expectLastCall().andThrow(e);
 
@@ -1892,7 +1893,7 @@ public class WorkerSinkTaskTest {
             });
     }
 
-    private void expectRebalanceRevocationError(RuntimeException e) {
+    private void expectRebalanceRevocationError(RuntimeException e) throws Exception {
         sinkTask.close(new HashSet<>(INITIAL_ASSIGNMENT));
         EasyMock.expectLastCall().andThrow(e);
 
@@ -1906,7 +1907,7 @@ public class WorkerSinkTaskTest {
             });
     }
 
-    private void expectRebalanceAssignmentError(RuntimeException e) {
+    private void expectRebalanceAssignmentError(RuntimeException e) throws Exception {
         sinkTask.close(INITIAL_ASSIGNMENT);
         EasyMock.expectLastCall();
 
@@ -1928,7 +1929,7 @@ public class WorkerSinkTaskTest {
             });
     }
 
-    private void expectPollInitialAssignment() {
+    private void expectPollInitialAssignment() throws Exception {
         sinkTask.open(INITIAL_ASSIGNMENT);
         EasyMock.expectLastCall();
 

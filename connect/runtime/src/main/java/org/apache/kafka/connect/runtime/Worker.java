@@ -42,6 +42,9 @@ import org.apache.kafka.connect.json.JsonConverter;
 import org.apache.kafka.connect.json.JsonConverterConfig;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
+import org.apache.kafka.connect.runtime.isolation.IsolatedTask;
 import org.apache.kafka.connect.runtime.isolation.LoaderSwap;
 import org.apache.kafka.connect.runtime.isolation.PluginType;
 import org.apache.kafka.connect.runtime.rest.resources.ConnectResource;
@@ -58,7 +61,6 @@ import org.apache.kafka.connect.runtime.isolation.Plugins.ClassLoaderUsage;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.apache.kafka.connect.source.SourceTask;
 import org.apache.kafka.connect.storage.CloseableOffsetStorageReader;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
 import org.apache.kafka.connect.storage.Converter;
@@ -585,12 +587,12 @@ public class Worker {
      * @param taskBuilder the {@link TaskBuilder} used to create the {@link WorkerTask} that manages the lifecycle of the task.
      * @return true if the task started successfully.
      */
-    private boolean startTask(
+    private <P extends IsolatedTask<?>> boolean startTask(
             ConnectorTaskId id,
             Map<String, String> connProps,
             Map<String, String> taskProps,
             TaskStatus.Listener statusListener,
-            TaskBuilder taskBuilder
+            TaskBuilder<P> taskBuilder
     ) {
         final WorkerTask workerTask;
         final TaskStatus.Listener taskStatusListener = workerMetricsGroup.wrapStatusListener(statusListener);
@@ -608,7 +610,9 @@ public class Worker {
                 final ConnectorConfig connConfig = new ConnectorConfig(plugins, connProps);
                 final TaskConfig taskConfig = new TaskConfig(taskProps);
                 final Class<? extends Task> taskClass = taskConfig.getClass(TaskConfig.TASK_CLASS_CONFIG).asSubclass(Task.class);
-                final Task task = plugins.newTask(taskClass);
+                @SuppressWarnings("unchecked")
+                // TODO: restructure this so that the type of the task is discovered once instead of twice.
+                final P task = (P) plugins.newTask(taskClass);
                 log.info("Instantiated task {} with version {} of type {}", id, task.version(), taskClass.getName());
 
                 // By maintaining connector's specific class loader for this thread here, we first
@@ -1143,14 +1147,14 @@ public class Worker {
         return workerMetricsGroup;
     }
 
-    abstract class TaskBuilder {
+    abstract class TaskBuilder<P> {
 
         private final ConnectorTaskId id;
         private final ClusterConfigState configState;
         private final TaskStatus.Listener statusListener;
         private final TargetState initialState;
 
-        private Task task = null;
+        private P task = null;
         private ConnectorConfig connectorConfig = null;
         private Converter keyConverter = null;
         private Converter valueConverter = null;
@@ -1167,32 +1171,32 @@ public class Worker {
             this.initialState = initialState;
         }
 
-        public TaskBuilder withTask(Task task) {
+        public TaskBuilder<P> withTask(P task) {
             this.task = task;
             return this;
         }
 
-        public TaskBuilder withConnectorConfig(ConnectorConfig connectorConfig) {
+        public TaskBuilder<P> withConnectorConfig(ConnectorConfig connectorConfig) {
             this.connectorConfig = connectorConfig;
             return this;
         }
 
-        public TaskBuilder withKeyConverter(Converter keyConverter) {
+        public TaskBuilder<P> withKeyConverter(Converter keyConverter) {
             this.keyConverter = keyConverter;
             return this;
         }
 
-        public TaskBuilder withValueConverter(Converter valueConverter) {
+        public TaskBuilder<P> withValueConverter(Converter valueConverter) {
             this.valueConverter = valueConverter;
             return this;
         }
 
-        public TaskBuilder withHeaderConverter(HeaderConverter headerConverter) {
+        public TaskBuilder<P> withHeaderConverter(HeaderConverter headerConverter) {
             this.headerConverter = headerConverter;
             return this;
         }
 
-        public TaskBuilder withClassloader(ClassLoader classLoader) {
+        public TaskBuilder<P> withClassloader(ClassLoader classLoader) {
             this.classLoader = classLoader;
             return this;
         }
@@ -1216,7 +1220,7 @@ public class Worker {
                     errorHandlingMetrics, connectorClass, retryWithToleranceOperator);
         }
 
-        abstract WorkerTask doBuild(Task task,
+        abstract WorkerTask doBuild(P task,
                                     ConnectorTaskId id,
                                     ClusterConfigState configState,
                                     TaskStatus.Listener statusListener,
@@ -1232,7 +1236,7 @@ public class Worker {
 
     }
 
-    class SinkTaskBuilder extends TaskBuilder {
+    class SinkTaskBuilder extends TaskBuilder<IsolatedSinkTask> {
         public SinkTaskBuilder(ConnectorTaskId id,
                                ClusterConfigState configState,
                                TaskStatus.Listener statusListener,
@@ -1241,7 +1245,7 @@ public class Worker {
         }
 
         @Override
-        public WorkerTask doBuild(Task task,
+        public WorkerTask doBuild(IsolatedSinkTask task,
                            ConnectorTaskId id,
                            ClusterConfigState configState,
                            TaskStatus.Listener statusListener,
@@ -1267,13 +1271,13 @@ public class Worker {
                     connectorClientConfigOverridePolicy, kafkaClusterId, ConnectorType.SINK);
             KafkaConsumer<byte[], byte[]> consumer = new KafkaConsumer<>(consumerProps);
 
-            return new WorkerSinkTask(id, (SinkTask) task, statusListener, initialState, config, configState, metrics, keyConverter,
+            return new WorkerSinkTask(id, task, statusListener, initialState, config, configState, metrics, keyConverter,
                     valueConverter, errorHandlingMetrics, headerConverter, transformationChain, consumer, classLoader, time,
                     retryWithToleranceOperator, workerErrantRecordReporter, herder.statusBackingStore());
         }
     }
 
-    class SourceTaskBuilder extends TaskBuilder {
+    class SourceTaskBuilder extends TaskBuilder<IsolatedSourceTask> {
         public SourceTaskBuilder(ConnectorTaskId id,
                                ClusterConfigState configState,
                                TaskStatus.Listener statusListener,
@@ -1282,7 +1286,7 @@ public class Worker {
         }
 
         @Override
-        public WorkerTask doBuild(Task task,
+        public WorkerTask doBuild(IsolatedSourceTask task,
                            ConnectorTaskId id,
                            ClusterConfigState configState,
                            TaskStatus.Listener statusListener,
@@ -1327,14 +1331,14 @@ public class Worker {
             OffsetStorageWriter offsetWriter = new OffsetStorageWriter(offsetStore, id.connector(), internalKeyConverter, internalValueConverter);
 
             // Note we pass the configState as it performs dynamic transformations under the covers
-            return new WorkerSourceTask(id, (SourceTask) task, statusListener, initialState, keyConverter, valueConverter, errorHandlingMetrics,
+            return new WorkerSourceTask(id, task, statusListener, initialState, keyConverter, valueConverter, errorHandlingMetrics,
                     headerConverter, transformationChain, producer, topicAdmin, topicCreationGroups,
                     offsetReader, offsetWriter, offsetStore, config, configState, metrics, classLoader, time,
                     retryWithToleranceOperator, herder.statusBackingStore(), executor);
         }
     }
 
-    class ExactlyOnceSourceTaskBuilder extends TaskBuilder {
+    class ExactlyOnceSourceTaskBuilder extends TaskBuilder<IsolatedSourceTask> {
         private final Runnable preProducerCheck;
         private final Runnable postProducerCheck;
 
@@ -1350,7 +1354,7 @@ public class Worker {
         }
 
         @Override
-        public WorkerTask doBuild(Task task,
+        public WorkerTask doBuild(IsolatedSourceTask task,
                                   ConnectorTaskId id,
                                   ClusterConfigState configState,
                                   TaskStatus.Listener statusListener,
@@ -1393,7 +1397,7 @@ public class Worker {
             OffsetStorageWriter offsetWriter = new OffsetStorageWriter(offsetStore, id.connector(), internalKeyConverter, internalValueConverter);
 
             // Note we pass the configState as it performs dynamic transformations under the covers
-            return new ExactlyOnceWorkerSourceTask(id, (SourceTask) task, statusListener, initialState, keyConverter, valueConverter,
+            return new ExactlyOnceWorkerSourceTask(id, task, statusListener, initialState, keyConverter, valueConverter,
                     headerConverter, transformationChain, producer, topicAdmin, topicCreationGroups,
                     offsetReader, offsetWriter, offsetStore, config, configState, metrics, errorHandlingMetrics, classLoader, time, retryWithToleranceOperator,
                     herder.statusBackingStore(), sourceConfig, executor, preProducerCheck, postProducerCheck);

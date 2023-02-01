@@ -33,6 +33,7 @@ import org.apache.kafka.connect.integration.MonitorableSourceConnector;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
 import org.apache.kafka.connect.runtime.errors.ErrorHandlingMetrics;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperatorTest;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -137,7 +138,7 @@ public class ExactlyOnceWorkerSourceTaskTest {
     @Mock private ErrorHandlingMetrics errorHandlingMetrics;
     private Time time;
     private ExactlyOnceWorkerSourceTask workerTask;
-    @Mock private SourceTask sourceTask;
+    @Mock private IsolatedSourceTask sourceTask;
     @Mock private Converter keyConverter;
     @Mock private Converter valueConverter;
     @Mock private HeaderConverter headerConverter;
@@ -753,7 +754,7 @@ public class ExactlyOnceWorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsRetries() {
+    public void testSendRecordsRetries() throws Exception {
         createWorkerTask();
 
         // Differentiate only by Kafka partition so we can reuse conversion expectations
@@ -793,7 +794,7 @@ public class ExactlyOnceWorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsProducerSendFailsImmediately() {
+    public void testSendRecordsProducerSendFailsImmediately() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, VALUE_1);
@@ -913,7 +914,7 @@ public class ExactlyOnceWorkerSourceTaskTest {
         });
     }
 
-    private void expectSuccessfulSends() {
+    private void expectSuccessfulSends() throws Exception {
         expectConvertHeadersAndKeyValue();
         expectApplyTransformationChain();
         expectSuccessfulSend(when(producer.send(any(), any())));
@@ -941,7 +942,7 @@ public class ExactlyOnceWorkerSourceTaskTest {
         return whenSend.thenThrow(failure);
     }
 
-    private void expectConvertHeadersAndKeyValue() {
+    private void expectConvertHeadersAndKeyValue() throws Exception {
         Headers headers = new RecordHeaders();
         for (Header header : headers) {
             when(headerConverter.fromConnectHeader(eq(TOPIC), eq(header.key()), eq(Schema.STRING_SCHEMA), eq(new String(header.value()))))
@@ -983,7 +984,7 @@ public class ExactlyOnceWorkerSourceTaskTest {
         verify(offsetStore).start();
     }
 
-    private void verifyStartup() {
+    private void verifyStartup() throws Exception {
         verify(sourceTask).initialize(any());
         verify(sourceTask).start(TASK_PROPS);
         taskStarted = true;
@@ -1036,7 +1037,7 @@ public class ExactlyOnceWorkerSourceTaskTest {
         verify(producer, times(count)).send(any(), any());
     }
 
-    private void verifyTransactions(int numBatches) throws InterruptedException {
+    private void verifyTransactions(int numBatches) throws Exception {
         VerificationMode mode = times(numBatches);
         verify(producer, mode).beginTransaction();
         verify(producer, mode).commitTransaction();

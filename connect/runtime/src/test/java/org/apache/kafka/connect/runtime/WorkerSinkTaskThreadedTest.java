@@ -29,6 +29,7 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperatorTest;
 import org.apache.kafka.connect.runtime.errors.ErrorHandlingMetrics;
@@ -112,7 +113,7 @@ public class WorkerSinkTaskThreadedTest {
     private TargetState initialState = TargetState.STARTED;
     private Time time;
     private ConnectMetrics metrics;
-    @Mock private SinkTask sinkTask;
+    @Mock private IsolatedSinkTask sinkTask;
     private Capture<WorkerSinkTaskContext> sinkTaskContext = EasyMock.newCapture();
     private WorkerConfig workerConfig;
     @Mock
@@ -510,7 +511,7 @@ public class WorkerSinkTaskThreadedTest {
         PowerMock.verifyAll();
     }
 
-    private void expectInitializeTask() {
+    private void expectInitializeTask() throws Exception {
 
         consumer.subscribe(EasyMock.eq(Arrays.asList(TOPIC)), EasyMock.capture(rebalanceListener));
         PowerMock.expectLastCall();
@@ -521,7 +522,7 @@ public class WorkerSinkTaskThreadedTest {
         PowerMock.expectLastCall();
     }
 
-    private void expectPollInitialAssignment() {
+    private void expectPollInitialAssignment() throws Exception {
         expectConsumerAssignment(INITIAL_ASSIGNMENT).times(2);
 
         sinkTask.open(INITIAL_ASSIGNMENT);
@@ -543,7 +544,7 @@ public class WorkerSinkTaskThreadedTest {
         return EasyMock.expect(consumer.assignment()).andReturn(assignment);
     }
 
-    private void expectStopTask() {
+    private void expectStopTask() throws Exception {
         sinkTask.stop();
         PowerMock.expectLastCall();
 
@@ -564,7 +565,7 @@ public class WorkerSinkTaskThreadedTest {
     }
 
     // Note that this can only be called once per test currently
-    private Capture<Collection<SinkRecord>> expectPolls(final long pollDelayMs) {
+    private Capture<Collection<SinkRecord>> expectPolls(final long pollDelayMs) throws Exception {
         // Stub out all the consumer stream/iterator responses, which we just want to verify occur,
         // but don't care about the exact details here.
         EasyMock.expect(consumer.poll(Duration.ofMillis(EasyMock.anyLong()))).andStubAnswer(
@@ -593,7 +594,7 @@ public class WorkerSinkTaskThreadedTest {
     }
 
     @SuppressWarnings("unchecked")
-    private IExpectationSetters<Object> expectOnePoll() {
+    private IExpectationSetters<Object> expectOnePoll() throws Exception {
         // Currently the SinkTask's put() method will not be invoked unless we provide some data, so instead of
         // returning empty data, we return one record. The expectation is that the data will be ignored by the
         // response behavior specified using the return value of this method.
@@ -616,7 +617,7 @@ public class WorkerSinkTaskThreadedTest {
     }
 
     @SuppressWarnings("unchecked")
-    private IExpectationSetters<Object> expectRebalanceDuringPoll() {
+    private IExpectationSetters<Object> expectRebalanceDuringPoll() throws Exception {
         final List<TopicPartition> partitions = Arrays.asList(TOPIC_PARTITION, TOPIC_PARTITION2, TOPIC_PARTITION3);
 
         final long startOffset = 40L;
@@ -661,7 +662,7 @@ public class WorkerSinkTaskThreadedTest {
                                                              final RuntimeException error,
                                                              final Exception consumerCommitError,
                                                              final long consumerCommitDelayMs,
-                                                             final boolean invokeCallback) {
+                                                             final boolean invokeCallback) throws Exception {
         final long finalOffset = FIRST_OFFSET + expectedMessages;
 
         // All assigned partitions will have offsets committed, but we've only processed messages/updated offsets for one

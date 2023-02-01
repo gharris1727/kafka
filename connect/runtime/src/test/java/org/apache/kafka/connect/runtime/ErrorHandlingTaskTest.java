@@ -33,6 +33,8 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.integration.MonitorableSourceConnector;
 import org.apache.kafka.connect.json.JsonConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.errors.ErrorHandlingMetrics;
 import org.apache.kafka.connect.runtime.errors.ErrorReporter;
@@ -47,7 +49,6 @@ import org.apache.kafka.connect.sink.SinkConnector;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.apache.kafka.connect.source.SourceTask;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
 import org.apache.kafka.connect.storage.Converter;
 import org.apache.kafka.connect.storage.HeaderConverter;
@@ -74,7 +75,6 @@ import org.mockito.stubbing.OngoingStubbing;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -145,10 +145,10 @@ public class ErrorHandlingTaskTest {
     private MockConnectMetrics metrics;
     @SuppressWarnings("unused")
     @Mock
-    private SinkTask sinkTask;
+    private IsolatedSinkTask sinkTask;
     @SuppressWarnings("unused")
     @Mock
-    private SourceTask sourceTask;
+    private IsolatedSourceTask sourceTask;
     private WorkerConfig workerConfig;
     private SourceConnectorConfig sourceConfig;
     @Mock
@@ -252,7 +252,7 @@ public class ErrorHandlingTaskTest {
     }
 
     @Test
-    public void testSourceTasksCloseErrorReporters() throws IOException {
+    public void testSourceTasksCloseErrorReporters() throws Exception {
         ErrorReporter reporter = mock(ErrorReporter.class);
 
         RetryWithToleranceOperator retryWithToleranceOperator = operator();
@@ -267,7 +267,7 @@ public class ErrorHandlingTaskTest {
     }
 
     @Test
-    public void testCloseErrorReportersExceptionPropagation() throws IOException {
+    public void testCloseErrorReportersExceptionPropagation() throws Exception {
         ErrorReporter reporterA = mock(ErrorReporter.class);
         ErrorReporter reporterB = mock(ErrorReporter.class);
 
@@ -462,7 +462,7 @@ public class ErrorHandlingTaskTest {
         assertEquals(expected, measured, 0.001d);
     }
 
-    private void verifyInitializeSink() {
+    private void verifyInitializeSink() throws Exception {
         verify(sinkTask).start(TASK_PROPS);
         verify(sinkTask).initialize(any(WorkerSinkTaskContext.class));
         verify(consumer).subscribe(eq(singletonList(TOPIC)),
@@ -481,7 +481,7 @@ public class ErrorHandlingTaskTest {
         assertEquals(expected, measured, 0.001d);
     }
 
-    private void verifyCloseSource() throws IOException {
+    private void verifyCloseSource() throws Exception {
         verify(producer).close(any(Duration.class));
         verify(admin).close(any(Duration.class));
         verify(offsetReader).close();

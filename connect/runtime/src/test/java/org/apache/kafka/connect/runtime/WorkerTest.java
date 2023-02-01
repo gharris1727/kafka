@@ -44,7 +44,10 @@ import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
 import org.apache.kafka.connect.runtime.MockConnectMetrics.MockMetricsReporter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkConnector;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceConnector;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
+import org.apache.kafka.connect.runtime.isolation.IsolatedTask;
 import org.apache.kafka.connect.runtime.isolation.LoaderSwap;
 import org.apache.kafka.connect.runtime.isolation.PluginType;
 import org.apache.kafka.connect.storage.ClusterConfigState;
@@ -197,7 +200,7 @@ public class WorkerTest {
     @Mock
     private CloseableConnectorContext ctx;
 
-    @Mock private TestSourceTask task;
+    @Mock private IsolatedSourceTask task;
     @Mock private Converter taskKeyConverter;
     @Mock private Converter taskValueConverter;
     @Mock private HeaderConverter taskHeaderConverter;
@@ -573,7 +576,7 @@ public class WorkerTest {
     }
 
     @Test
-    public void testAddRemoveSourceTask() {
+    public void testAddRemoveSourceTask() throws Exception {
         mockKafkaClusterId();
         mockTaskIsolation(SampleSourceConnector.class, TestSourceTask.class, task);
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, taskKeyConverter);
@@ -610,9 +613,9 @@ public class WorkerTest {
     }
 
     @Test
-    public void testAddRemoveSinkTask() {
+    public void testAddRemoveSinkTask() throws Exception {
         // Most of the other cases use source tasks; we make sure to get code coverage for sink tasks here as well
-        SinkTask task = mock(TestSinkTask.class);
+        IsolatedSinkTask task = mock(IsolatedSinkTask.class);
         mockKafkaClusterId();
         mockTaskIsolation(SampleSinkConnector.class, TestSinkTask.class, task);
         mockTaskConverter(ClassLoaderUsage.CURRENT_CLASSLOADER, WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, taskKeyConverter);
@@ -652,7 +655,7 @@ public class WorkerTest {
     }
 
     @Test
-    public void testAddRemoveExactlyOnceSourceTask() {
+    public void testAddRemoveExactlyOnceSourceTask() throws Exception {
         Map<String, String> workerProps = new HashMap<>();
         workerProps.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
         workerProps.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
@@ -708,7 +711,7 @@ public class WorkerTest {
     }
 
     @Test
-    public void testTaskStatusMetricsStatuses() {
+    public void testTaskStatusMetricsStatuses() throws Exception {
         mockInternalConverters();
         mockStorage();
         mockFileConfigProvider();
@@ -846,7 +849,7 @@ public class WorkerTest {
     }
 
     @Test
-    public void testCleanupTasksOnStop() {
+    public void testCleanupTasksOnStop() throws Exception {
         mockInternalConverters();
         mockStorage();
         mockFileConfigProvider();
@@ -891,7 +894,7 @@ public class WorkerTest {
     }
 
     @Test
-    public void testConverterOverrides() {
+    public void testConverterOverrides() throws Exception {
         mockInternalConverters();
         mockStorage();
         mockFileConfigProvider();
@@ -1841,18 +1844,20 @@ public class WorkerTest {
         verify(connector, atLeastOnce()).version();
     }
 
-    private void mockTaskIsolation(Class<? extends Connector> connector, Class<? extends Task> taskClass, Task task) {
+    private void mockTaskIsolation(Class<? extends Connector> connector, Class<? extends Task> taskClass, IsolatedTask<?> task) throws Exception {
         mockGenericIsolation();
         doReturn(connector).when(plugins).connectorClass(connector.getName());
-        when(plugins.newTask(taskClass)).thenReturn(task);
+        OngoingStubbing<IsolatedTask<?>> newTask = when(plugins.newTask(taskClass));
+        newTask.thenReturn(task);
         when(task.version()).thenReturn("1.0");
     }
 
-    private void verifyTaskIsolation(Task task) {
+    private void verifyTaskIsolation(IsolatedTask<?> task) throws Exception {
         verifyGenericIsolation();
         verify(plugins).connectorClass(anyString());
         verify(plugins).newTask(any());
         verify(task).version();
+        verify(loaderSwap, atLeastOnce()).close();
     }
 
     private void mockExecutorRealSubmit(Class<? extends Runnable> runnableClass) {

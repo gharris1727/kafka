@@ -40,6 +40,7 @@ import org.apache.kafka.connect.runtime.errors.ErrorHandlingMetrics;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator;
 import org.apache.kafka.connect.runtime.errors.Stage;
 import org.apache.kafka.connect.runtime.errors.ToleranceType;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.source.SourceTask;
 import org.apache.kafka.connect.source.SourceTaskContext;
@@ -182,7 +183,7 @@ public abstract class AbstractWorkerSourceTask extends WorkerTask {
     protected final OffsetStorageWriter offsetWriter;
     protected final Producer<byte[], byte[]> producer;
 
-    private final SourceTask task;
+    private final IsolatedSourceTask task;
     private final Converter keyConverter;
     private final Converter valueConverter;
     private final HeaderConverter headerConverter;
@@ -202,7 +203,7 @@ public abstract class AbstractWorkerSourceTask extends WorkerTask {
     private volatile boolean producerClosed = false;
 
     protected AbstractWorkerSourceTask(ConnectorTaskId id,
-                                       SourceTask task,
+                                       IsolatedSourceTask task,
                                        TaskStatus.Listener statusListener,
                                        TargetState initialState,
                                        Converter keyConverter,
@@ -259,7 +260,7 @@ public abstract class AbstractWorkerSourceTask extends WorkerTask {
     }
 
     @Override
-    protected void initializeAndStart() {
+    protected void initializeAndStart() throws Exception {
         prepareToInitializeTask();
         offsetStore.start();
         // If we try to start the task at all by invoking initialize, then count this as
@@ -327,7 +328,7 @@ public abstract class AbstractWorkerSourceTask extends WorkerTask {
     }
 
     @Override
-    public void execute() {
+    public void execute() throws Exception {
         try {
             prepareToEnterSendLoop();
             while (!isStopping()) {
@@ -363,7 +364,7 @@ public abstract class AbstractWorkerSourceTask extends WorkerTask {
             }
         } catch (InterruptedException e) {
             // Ignore and allow to exit.
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             try {
                 finalOffsetCommit(true);
             } catch (Exception offsetException) {
@@ -451,7 +452,7 @@ public abstract class AbstractWorkerSourceTask extends WorkerTask {
         return true;
     }
 
-    protected List<SourceRecord> poll() throws InterruptedException {
+    protected List<SourceRecord> poll() throws Exception {
         try {
             return task.poll();
         } catch (RetriableException | org.apache.kafka.common.errors.RetriableException e) {

@@ -29,8 +29,8 @@ import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.runtime.errors.ErrorHandlingMetrics;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.apache.kafka.connect.source.SourceTask;
 import org.apache.kafka.connect.source.SourceTask.TransactionBoundary;
 import org.apache.kafka.connect.storage.CloseableOffsetStorageReader;
 import org.apache.kafka.connect.storage.ClusterConfigState;
@@ -70,7 +70,7 @@ class ExactlyOnceWorkerSourceTask extends AbstractWorkerSourceTask {
     private final Runnable postProducerCheck;
 
     public ExactlyOnceWorkerSourceTask(ConnectorTaskId id,
-                                       SourceTask task,
+                                       IsolatedSourceTask task,
                                        TaskStatus.Listener statusListener,
                                        TargetState initialState,
                                        Converter keyConverter,

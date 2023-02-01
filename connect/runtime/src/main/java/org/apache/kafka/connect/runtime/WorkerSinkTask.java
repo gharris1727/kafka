@@ -33,13 +33,13 @@ import org.apache.kafka.common.metrics.stats.Rate;
 import org.apache.kafka.common.metrics.stats.Value;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
-import org.apache.kafka.common.utils.Utils.UncheckedCloseable;
 import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.header.ConnectHeaders;
 import org.apache.kafka.connect.header.Headers;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator;
 import org.apache.kafka.connect.runtime.errors.ErrorHandlingMetrics;
@@ -74,7 +74,7 @@ class WorkerSinkTask extends WorkerTask {
     private static final Logger log = LoggerFactory.getLogger(WorkerSinkTask.class);
 
     private final WorkerConfig workerConfig;
-    private final SinkTask task;
+    private final IsolatedSinkTask task;
     private final ClusterConfigState configState;
     private Map<String, String> taskConfig;
     private final Converter keyConverter;
@@ -89,7 +89,7 @@ class WorkerSinkTask extends WorkerTask {
     private final Map<TopicPartition, OffsetAndMetadata> lastCommittedOffsets;
     private final Map<TopicPartition, OffsetAndMetadata> currentOffsets;
     private final Map<TopicPartition, OffsetAndMetadata> origOffsets;
-    private RuntimeException rebalanceException;
+    private Exception rebalanceException;
     private long nextCommit;
     private int commitSeqno;
     private long commitStarted;
@@ -100,7 +100,7 @@ class WorkerSinkTask extends WorkerTask {
     private final WorkerErrantRecordReporter workerErrantRecordReporter;
 
     public WorkerSinkTask(ConnectorTaskId id,
-                          SinkTask task,
+                          IsolatedSinkTask task,
                           TaskStatus.Listener statusListener,
                           TargetState initialState,
                           WorkerConfig workerConfig,
@@ -197,11 +197,11 @@ class WorkerSinkTask extends WorkerTask {
     }
 
     @Override
-    public void execute() {
+    public void execute() throws Exception {
         log.info("{} Executing sink task", this);
         // Make sure any uncommitted data has been committed and the task has
         // a chance to clean up its state
-        try (UncheckedCloseable suppressible = this::closeAllPartitions) {
+        try (AutoCloseable suppressible = this::closeAllPartitions) {
             while (!isStopping())
                 iteration();
         } catch (WakeupException e) {
@@ -210,7 +210,7 @@ class WorkerSinkTask extends WorkerTask {
         }
     }
 
-    protected void iteration() {
+    protected void iteration() throws Exception {
         final long offsetCommitIntervalMs = workerConfig.getLong(WorkerConfig.OFFSET_COMMIT_INTERVAL_MS_CONFIG);
 
         try {
@@ -297,7 +297,7 @@ class WorkerSinkTask extends WorkerTask {
      * Initializes and starts the SinkTask.
      */
     @Override
-    protected void initializeAndStart() {
+    protected void initializeAndStart() throws Exception {
         SinkConnectorConfig.validate(taskConfig);
 
         if (SinkConnectorConfig.hasTopicsConfig(taskConfig)) {
@@ -319,7 +319,7 @@ class WorkerSinkTask extends WorkerTask {
     /**
      * Poll for new messages with the given timeout. Should only be invoked by the worker thread.
      */
-    protected void poll(long timeoutMs) {
+    protected void poll(long timeoutMs) throws Exception {
         rewind();
         long retryTimeout = context.timeout();
         if (retryTimeout > 0) {
@@ -421,7 +421,11 @@ class WorkerSinkTask extends WorkerTask {
         } finally {
             if (closing) {
                 log.trace("{} Closing the task before committing the offsets: {}", this, offsetsToCommit);
-                task.close(topicPartitions);
+                try {
+                    task.close(topicPartitions);
+                } catch (Exception e) {
+                    log.error("Unable to close partitions in task {}", this, e);
+                }
             }
         }
 
@@ -471,12 +475,12 @@ class WorkerSinkTask extends WorkerTask {
                 '}';
     }
 
-    private ConsumerRecords<byte[], byte[]> pollConsumer(long timeoutMs) {
+    private ConsumerRecords<byte[], byte[]> pollConsumer(long timeoutMs) throws Exception {
         ConsumerRecords<byte[], byte[]> msgs = consumer.poll(Duration.ofMillis(timeoutMs));
 
         // Exceptions raised from the task during a rebalance should be rethrown to stop the worker
         if (rebalanceException != null) {
-            RuntimeException e = rebalanceException;
+            Exception e = rebalanceException;
             rebalanceException = null;
             throw e;
         }
@@ -635,16 +639,16 @@ class WorkerSinkTask extends WorkerTask {
         context.clearOffsets();
     }
 
-    private void openPartitions(Collection<TopicPartition> partitions) {
+    private void openPartitions(Collection<TopicPartition> partitions) throws Exception {
         updatePartitionCount();
         task.open(partitions);
     }
 
-    private void closeAllPartitions() {
+    private void closeAllPartitions() throws Exception {
         closePartitions(currentOffsets.keySet(), false);
     }
 
-    private void closePartitions(Collection<TopicPartition> topicPartitions, boolean lost) {
+    private void closePartitions(Collection<TopicPartition> topicPartitions, boolean lost) throws Exception {
         if (!lost) {
             commitOffsets(time.milliseconds(), true, topicPartitions);
         } else {
@@ -737,7 +741,7 @@ class WorkerSinkTask extends WorkerTask {
                     openPartitions(partitions);
                     // Rewind should be applied only if openPartitions succeeds.
                     rewind();
-                } catch (RuntimeException e) {
+                } catch (Exception e) {
                     // The consumer swallows exceptions raised in the rebalance listener, so we need to store
                     // exceptions and rethrow when poll() returns.
                     rebalanceException = e;
@@ -768,7 +772,7 @@ class WorkerSinkTask extends WorkerTask {
             try {
                 closePartitions(partitions, lost);
                 sinkTaskMetricsGroup.clearOffsets(partitions);
-            } catch (RuntimeException e) {
+            } catch (Exception e) {
                 // The consumer swallows exceptions raised in the rebalance listener, so we need to store
                 // exceptions and rethrow when poll() returns.
                 rebalanceException = e;

@@ -32,6 +32,7 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.integration.MonitorableSourceConnector;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
+import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperatorTest;
@@ -70,7 +71,6 @@ import org.powermock.modules.junit4.PowerMockRunner;
 import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.powermock.reflect.Whitebox;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collection;
@@ -132,7 +132,7 @@ public class WorkerSourceTaskTest {
     private SourceConnectorConfig sourceConfig;
     private Plugins plugins;
     private MockConnectMetrics metrics;
-    @Mock private SourceTask sourceTask;
+    @Mock private IsolatedSourceTask sourceTask;
     @Mock private Converter keyConverter;
     @Mock private Converter valueConverter;
     @Mock private HeaderConverter headerConverter;
@@ -650,7 +650,7 @@ public class WorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsProducerSendFailsImmediately() {
+    public void testSendRecordsProducerSendFailsImmediately() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
@@ -804,16 +804,16 @@ public class WorkerSourceTaskTest {
         return new TopicAdmin.TopicCreationResponse(created, existing);
     }
 
-    private void expectPreliminaryCalls() {
+    private void expectPreliminaryCalls() throws Exception {
         expectPreliminaryCalls(TOPIC);
     }
 
-    private void expectPreliminaryCalls(String topic) {
+    private void expectPreliminaryCalls(String topic) throws Exception {
         expectConvertHeadersAndKeyValue(topic, true, emptyHeaders());
         expectApplyTransformationChain(false);
     }
 
-    private CountDownLatch expectEmptyPolls(int minimum, final AtomicInteger count) throws InterruptedException {
+    private CountDownLatch expectEmptyPolls(int minimum, final AtomicInteger count) throws Exception {
         final CountDownLatch latch = new CountDownLatch(minimum);
         // Note that we stub these to allow any number of calls because the thread will continue to
         // run. The count passed in + latch returned just makes sure we get *at least* that number of
@@ -828,7 +828,7 @@ public class WorkerSourceTaskTest {
         return latch;
     }
 
-    private CountDownLatch expectPolls(int minimum, final AtomicInteger count) throws InterruptedException {
+    private CountDownLatch expectPolls(int minimum, final AtomicInteger count) throws Exception {
         final CountDownLatch latch = new CountDownLatch(minimum);
         // Note that we stub these to allow any number of calls because the thread will continue to
         // run. The count passed in + latch returned just makes sure we get *at least* that number of
@@ -845,12 +845,12 @@ public class WorkerSourceTaskTest {
         return latch;
     }
 
-    private CountDownLatch expectPolls(int count) throws InterruptedException {
+    private CountDownLatch expectPolls(int count) throws Exception {
         return expectPolls(count, new AtomicInteger());
     }
 
     @SuppressWarnings("unchecked")
-    private void expectSendRecordSyncFailure(Throwable error) {
+    private void expectSendRecordSyncFailure(Throwable error) throws Exception {
         expectConvertHeadersAndKeyValue(false);
         expectApplyTransformationChain(false);
 
@@ -860,23 +860,23 @@ public class WorkerSourceTaskTest {
             .andThrow(error);
     }
 
-    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordAnyTimes() throws InterruptedException {
+    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordAnyTimes() throws Exception {
         return expectSendRecordTaskCommitRecordSucceed(true);
     }
 
-    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordOnce() throws InterruptedException {
+    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordOnce() throws Exception {
         return expectSendRecordTaskCommitRecordSucceed(false);
     }
 
-    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordProducerCallbackFail() throws InterruptedException {
+    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordProducerCallbackFail() throws Exception {
         return expectSendRecord(TOPIC, false, false, false, true, emptyHeaders());
     }
 
-    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordTaskCommitRecordSucceed(boolean anyTimes) throws InterruptedException {
+    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordTaskCommitRecordSucceed(boolean anyTimes) throws Exception {
         return expectSendRecord(TOPIC, anyTimes, true, true, true, emptyHeaders());
     }
 
-    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordTaskCommitRecordFail(boolean anyTimes) throws InterruptedException {
+    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordTaskCommitRecordFail(boolean anyTimes) throws Exception {
         return expectSendRecord(TOPIC, anyTimes, true, false, true, emptyHeaders());
     }
 
@@ -887,7 +887,7 @@ public class WorkerSourceTaskTest {
         boolean commitSuccess,
         boolean isMockedConverters,
         Headers headers
-    ) throws InterruptedException {
+    ) throws Exception {
         if (isMockedConverters) {
             expectConvertHeadersAndKeyValue(topic, anyTimes, headers);
         }
@@ -928,11 +928,11 @@ public class WorkerSourceTaskTest {
         return sent;
     }
 
-    private void expectConvertHeadersAndKeyValue(boolean anyTimes) {
+    private void expectConvertHeadersAndKeyValue(boolean anyTimes) throws Exception {
         expectConvertHeadersAndKeyValue(TOPIC, anyTimes, emptyHeaders());
     }
 
-    private void expectConvertHeadersAndKeyValue(String topic, boolean anyTimes, Headers headers) {
+    private void expectConvertHeadersAndKeyValue(String topic, boolean anyTimes, Headers headers) throws Exception {
         for (Header header : headers) {
             IExpectationSetters<byte[]> convertHeaderExpect = EasyMock.expect(headerConverter.fromConnectHeader(topic, header.key(), Schema.STRING_SCHEMA, new String(header.value())));
             if (anyTimes)
@@ -961,7 +961,7 @@ public class WorkerSourceTaskTest {
             convertKeyExpect.andAnswer(recordCapture::getValue);
     }
 
-    private void expectTaskCommitRecordWithOffset(boolean anyTimes, boolean succeed) throws InterruptedException {
+    private void expectTaskCommitRecordWithOffset(boolean anyTimes, boolean succeed) throws Exception {
         sourceTask.commitRecord(EasyMock.anyObject(SourceRecord.class), EasyMock.anyObject(RecordMetadata.class));
         IExpectationSetters<Void> expect = EasyMock.expectLastCall();
         if (!succeed) {
@@ -1073,7 +1073,7 @@ public class WorkerSourceTaskTest {
     private abstract static class TestSourceTask extends SourceTask {
     }
 
-    private void expectCleanStartup() {
+    private void expectCleanStartup() throws Exception {
         offsetStore.start();
         EasyMock.expectLastCall();
         sourceTask.initialize(EasyMock.anyObject(SourceTaskContext.class));
@@ -1102,7 +1102,7 @@ public class WorkerSourceTaskTest {
 
         try {
             headerConverter.close();
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
         EasyMock.expectLastCall();
