@@ -43,6 +43,7 @@ import org.apache.kafka.connect.json.JsonConverter;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
 import org.apache.kafka.connect.runtime.MockConnectMetrics.MockMetricsReporter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceConnector;
@@ -201,8 +202,8 @@ public class WorkerTest {
     private CloseableConnectorContext ctx;
 
     @Mock private IsolatedSourceTask task;
-    @Mock private Converter taskKeyConverter;
-    @Mock private Converter taskValueConverter;
+    @Mock private IsolatedConverter taskKeyConverter;
+    @Mock private IsolatedConverter taskValueConverter;
     @Mock private HeaderConverter taskHeaderConverter;
     @Mock private ExecutorService executorService;
     @Mock private ConnectorConfig connectorConfig;
@@ -1800,7 +1801,7 @@ public class WorkerTest {
         verify(plugins).newInternalConverter(eq(false), anyString(), anyMap());
     }
 
-    private void mockTaskConverter(ClassLoaderUsage classLoaderUsage, String converterClassConfig, Converter returning) {
+    private void mockTaskConverter(ClassLoaderUsage classLoaderUsage, String converterClassConfig, IsolatedConverter returning) {
         when(plugins.newConverter(any(AbstractConfig.class), eq(converterClassConfig), eq(classLoaderUsage)))
                        .thenReturn(returning);
     }

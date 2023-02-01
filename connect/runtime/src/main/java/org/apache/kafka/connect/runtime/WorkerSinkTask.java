@@ -39,6 +39,7 @@ import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.header.ConnectHeaders;
 import org.apache.kafka.connect.header.Headers;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator;
@@ -47,7 +48,6 @@ import org.apache.kafka.connect.runtime.errors.Stage;
 import org.apache.kafka.connect.runtime.errors.WorkerErrantRecordReporter;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
-import org.apache.kafka.connect.storage.Converter;
 import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.util.ConnectUtils;
@@ -77,8 +77,8 @@ class WorkerSinkTask extends WorkerTask {
     private final IsolatedSinkTask task;
     private final ClusterConfigState configState;
     private Map<String, String> taskConfig;
-    private final Converter keyConverter;
-    private final Converter valueConverter;
+    private final IsolatedConverter keyConverter;
+    private final IsolatedConverter valueConverter;
     private final HeaderConverter headerConverter;
     private final TransformationChain<SinkRecord> transformationChain;
     private final SinkTaskMetricsGroup sinkTaskMetricsGroup;
@@ -106,8 +106,8 @@ class WorkerSinkTask extends WorkerTask {
                           WorkerConfig workerConfig,
                           ClusterConfigState configState,
                           ConnectMetrics connectMetrics,
-                          Converter keyConverter,
-                          Converter valueConverter,
+                          IsolatedConverter keyConverter,
+                          IsolatedConverter valueConverter,
                           ErrorHandlingMetrics errorMetrics,
                           HeaderConverter headerConverter,
                           TransformationChain<SinkRecord> transformationChain,
@@ -517,10 +517,10 @@ class WorkerSinkTask extends WorkerTask {
 
     private SinkRecord convertAndTransformRecord(final ConsumerRecord<byte[], byte[]> msg) {
         SchemaAndValue keyAndSchema = retryWithToleranceOperator.execute(() -> keyConverter.toConnectData(msg.topic(), msg.headers(), msg.key()),
-                Stage.KEY_CONVERTER, keyConverter.getClass());
+                Stage.KEY_CONVERTER, keyConverter.pluginClass());
 
         SchemaAndValue valueAndSchema = retryWithToleranceOperator.execute(() -> valueConverter.toConnectData(msg.topic(), msg.headers(), msg.value()),
-                Stage.VALUE_CONVERTER, valueConverter.getClass());
+                Stage.VALUE_CONVERTER, valueConverter.pluginClass());
 
         Headers headers = retryWithToleranceOperator.execute(() -> convertHeadersFor(msg), Stage.HEADER_CONVERTER, headerConverter.getClass());
 

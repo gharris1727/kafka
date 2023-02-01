@@ -29,6 +29,7 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperatorTest;
@@ -38,7 +39,6 @@ import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.sink.SinkConnector;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
-import org.apache.kafka.connect.storage.Converter;
 import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.util.ConnectorTaskId;
@@ -118,8 +118,8 @@ public class WorkerSinkTaskThreadedTest {
     private WorkerConfig workerConfig;
     @Mock
     private PluginClassLoader pluginLoader;
-    @Mock private Converter keyConverter;
-    @Mock private Converter valueConverter;
+    @Mock private IsolatedConverter keyConverter;
+    @Mock private IsolatedConverter valueConverter;
     @Mock private HeaderConverter headerConverter;
     @Mock private TransformationChain<SinkRecord> transformationChain;
     private WorkerSinkTask workerTask;

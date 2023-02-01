@@ -23,11 +23,11 @@ import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.header.Header;
 import org.apache.kafka.connect.runtime.InternalSinkRecord;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.sink.ErrantRecordReporter;
 import org.apache.kafka.connect.sink.SinkRecord;
 
 import org.apache.kafka.connect.sink.SinkTask;
-import org.apache.kafka.connect.storage.Converter;
 import org.apache.kafka.connect.storage.HeaderConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,8 +50,8 @@ public class WorkerErrantRecordReporter implements ErrantRecordReporter {
     private static final Logger log = LoggerFactory.getLogger(WorkerErrantRecordReporter.class);
 
     private final RetryWithToleranceOperator retryWithToleranceOperator;
-    private final Converter keyConverter;
-    private final Converter valueConverter;
+    private final IsolatedConverter keyConverter;
+    private final IsolatedConverter valueConverter;
     private final HeaderConverter headerConverter;
 
     // Visible for testing
@@ -59,8 +59,8 @@ public class WorkerErrantRecordReporter implements ErrantRecordReporter {
 
     public WorkerErrantRecordReporter(
         RetryWithToleranceOperator retryWithToleranceOperator,
-        Converter keyConverter,
-        Converter valueConverter,
+        IsolatedConverter keyConverter,
+        IsolatedConverter valueConverter,
         HeaderConverter headerConverter
     ) {
         this.retryWithToleranceOperator = retryWithToleranceOperator;
@@ -79,31 +79,35 @@ public class WorkerErrantRecordReporter implements ErrantRecordReporter {
         if (record instanceof InternalSinkRecord) {
             consumerRecord = ((InternalSinkRecord) record).originalRecord();
         } else {
-            // Generate a new consumer record from the modified sink record. We prefer
-            // to send the original consumer record (pre-transformed) to the DLQ,
-            // but in this case we don't have one and send the potentially transformed
-            // record instead
-            String topic = record.topic();
-            byte[] key = keyConverter.fromConnectData(topic, record.keySchema(), record.key());
-            byte[] value = valueConverter.fromConnectData(topic,
-                record.valueSchema(), record.value());
+            try {
+                // Generate a new consumer record from the modified sink record. We prefer
+                // to send the original consumer record (pre-transformed) to the DLQ,
+                // but in this case we don't have one and send the potentially transformed
+                // record instead
+                String topic = record.topic();
+                byte[] key = keyConverter.fromConnectData(topic, record.keySchema(), record.key());
+                byte[] value = valueConverter.fromConnectData(topic,
+                        record.valueSchema(), record.value());
 
-            RecordHeaders headers = new RecordHeaders();
-            if (record.headers() != null) {
-                for (Header header : record.headers()) {
-                    String headerKey = header.key();
-                    byte[] rawHeader = headerConverter.fromConnectHeader(topic, headerKey,
-                        header.schema(), header.value());
-                    headers.add(headerKey, rawHeader);
+                RecordHeaders headers = new RecordHeaders();
+                if (record.headers() != null) {
+                    for (Header header : record.headers()) {
+                        String headerKey = header.key();
+                        byte[] rawHeader = headerConverter.fromConnectHeader(topic, headerKey,
+                                header.schema(), header.value());
+                        headers.add(headerKey, rawHeader);
+                    }
                 }
+
+                int keyLength = key != null ? key.length : -1;
+                int valLength = value != null ? value.length : -1;
+
+                consumerRecord = new ConsumerRecord<>(record.topic(), record.kafkaPartition(),
+                        record.kafkaOffset(), record.timestamp(), record.timestampType(), keyLength,
+                        valLength, key, value, headers, Optional.empty());
+            } catch (Exception e) {
+                throw new ConnectException("Unable to convert record for reporting", e);
             }
-
-            int keyLength = key != null ? key.length : -1;
-            int valLength = value != null ? value.length : -1;
-
-            consumerRecord = new ConsumerRecord<>(record.topic(), record.kafkaPartition(),
-                record.kafkaOffset(), record.timestamp(), record.timestampType(), keyLength,
-                valLength, key, value, headers, Optional.empty());
         }
 
         Future<Void> future = retryWithToleranceOperator.executeFailed(Stage.TASK_PUT, SinkTask.class, consumerRecord, error);

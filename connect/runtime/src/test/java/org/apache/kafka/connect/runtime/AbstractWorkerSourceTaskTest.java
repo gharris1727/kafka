@@ -40,12 +40,12 @@ import org.apache.kafka.connect.integration.MonitorableSourceConnector;
 import org.apache.kafka.connect.runtime.errors.ErrorHandlingMetrics;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperatorTest;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.CloseableOffsetStorageReader;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
-import org.apache.kafka.connect.storage.Converter;
 import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.OffsetStorageWriter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
@@ -120,8 +120,8 @@ public class AbstractWorkerSourceTaskTest {
     @Mock private IsolatedSourceTask sourceTask;
     @Mock private TopicAdmin admin;
     @Mock private KafkaProducer<byte[], byte[]> producer;
-    @Mock private Converter keyConverter;
-    @Mock private Converter valueConverter;
+    @Mock private IsolatedConverter keyConverter;
+    @Mock private IsolatedConverter valueConverter;
     @Mock private HeaderConverter headerConverter;
     @Mock private TransformationChain<SourceRecord> transformationChain;
     @Mock private CloseableOffsetStorageReader offsetReader;
@@ -349,9 +349,8 @@ public class AbstractWorkerSourceTaskTest {
     @Test
     public void testHeadersWithCustomConverter() throws Exception {
         StringConverter stringConverter = new StringConverter();
-        SampleConverterWithHeaders testConverter = new SampleConverterWithHeaders();
 
-        createWorkerTask(stringConverter, testConverter, stringConverter);
+        createWorkerTask(keyConverter, valueConverter, stringConverter);
 
         List<SourceRecord> records = new ArrayList<>();
 
@@ -787,7 +786,7 @@ public class AbstractWorkerSourceTaskTest {
         createWorkerTask(keyConverter, valueConverter, headerConverter);
     }
 
-    private void createWorkerTask(Converter keyConverter, Converter valueConverter, HeaderConverter headerConverter) {
+    private void createWorkerTask(IsolatedConverter keyConverter, IsolatedConverter valueConverter, HeaderConverter headerConverter) {
         workerTask = new AbstractWorkerSourceTask(
                 taskId, sourceTask, statusListener, TargetState.STARTED, keyConverter, valueConverter, headerConverter, transformationChain,
                 sourceTaskContext, producer, admin, TopicCreationGroup.configuredGroups(sourceConfig), offsetReader, offsetWriter, offsetStore,

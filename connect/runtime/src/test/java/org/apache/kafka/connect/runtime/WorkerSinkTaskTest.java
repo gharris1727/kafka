@@ -39,6 +39,7 @@ import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.WorkerSinkTask.SinkTaskMetricsGroup;
@@ -49,7 +50,6 @@ import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.sink.SinkConnector;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
-import org.apache.kafka.connect.storage.Converter;
 import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.storage.StringConverter;
@@ -144,9 +144,9 @@ public class WorkerSinkTaskTest {
     @Mock
     private PluginClassLoader pluginLoader;
     @Mock
-    private Converter keyConverter;
+    private IsolatedConverter keyConverter;
     @Mock
-    private Converter valueConverter;
+    private IsolatedConverter valueConverter;
     @Mock
     private HeaderConverter headerConverter;
     @Mock
@@ -183,7 +183,7 @@ public class WorkerSinkTaskTest {
         createTask(initialState, keyConverter, valueConverter, headerConverter);
     }
 
-    private void createTask(TargetState initialState, Converter keyConverter, Converter valueConverter, HeaderConverter headerConverter) {
+    private void createTask(TargetState initialState, IsolatedConverter keyConverter, IsolatedConverter valueConverter, HeaderConverter headerConverter) {
         workerTask = new WorkerSinkTask(
             taskId, sinkTask, statusListener, initialState, workerConfig, ClusterConfigState.EMPTY, metrics,
             keyConverter, valueConverter, errorHandlingMetrics, headerConverter,
@@ -1820,9 +1820,8 @@ public class WorkerSinkTaskTest {
     @Test
     public void testHeadersWithCustomConverter() throws Exception {
         StringConverter stringConverter = new StringConverter();
-        SampleConverterWithHeaders testConverter = new SampleConverterWithHeaders();
 
-        createTask(initialState, stringConverter, testConverter, stringConverter);
+        createTask(initialState, keyConverter, valueConverter, stringConverter);
 
         expectInitializeTask();
         expectTaskGetTopic(true);
@@ -1988,15 +1987,15 @@ public class WorkerSinkTaskTest {
             ));
     }
 
-    private void expectConversionAndTransformation(final int numMessages) {
+    private void expectConversionAndTransformation(final int numMessages) throws Exception {
         expectConversionAndTransformation(numMessages, null);
     }
 
-    private void expectConversionAndTransformation(final int numMessages, final String topicPrefix) {
+    private void expectConversionAndTransformation(final int numMessages, final String topicPrefix) throws Exception {
         expectConversionAndTransformation(numMessages, topicPrefix, emptyHeaders());
     }
 
-    private void expectConversionAndTransformation(final int numMessages, final String topicPrefix, final Headers headers) {
+    private void expectConversionAndTransformation(final int numMessages, final String topicPrefix, final Headers headers) throws Exception {
         EasyMock.expect(keyConverter.toConnectData(TOPIC, headers, RAW_KEY)).andReturn(new SchemaAndValue(KEY_SCHEMA, KEY)).times(numMessages);
         EasyMock.expect(valueConverter.toConnectData(TOPIC, headers, RAW_VALUE)).andReturn(new SchemaAndValue(VALUE_SCHEMA, VALUE)).times(numMessages);
 

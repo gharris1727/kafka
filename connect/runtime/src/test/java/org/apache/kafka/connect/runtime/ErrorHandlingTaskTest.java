@@ -28,11 +28,13 @@ import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.connector.ConnectRecord;
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.integration.MonitorableSourceConnector;
-import org.apache.kafka.connect.json.JsonConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
@@ -50,7 +52,6 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
-import org.apache.kafka.connect.storage.Converter;
 import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.OffsetStorageReaderImpl;
 import org.apache.kafka.connect.storage.OffsetStorageWriter;
@@ -83,6 +84,7 @@ import java.util.Set;
 import java.util.Collections;
 import java.util.Collection;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonList;
@@ -153,6 +155,10 @@ public class ErrorHandlingTaskTest {
     private SourceConnectorConfig sourceConfig;
     @Mock
     private PluginClassLoader pluginLoader;
+    @Mock
+    private IsolatedConverter keyConverter;
+    @Mock
+    private IsolatedConverter valueConverter;
     @SuppressWarnings("unused")
     @Mock
     private HeaderConverter headerConverter;
@@ -309,6 +315,15 @@ public class ErrorHandlingTaskTest {
         ConsumerRecord<byte[], byte[]> record2 = new ConsumerRecord<>(
                 TOPIC, PARTITION2, FIRST_OFFSET,
                 null, "{\"a\" 10}".getBytes());
+        AtomicInteger invocations = new AtomicInteger();
+        when(keyConverter.toConnectData(any(), any(), any())).thenReturn(new SchemaAndValue(null, null));
+        when(valueConverter.toConnectData(any(), any(), any())).thenAnswer(invocation -> {
+            if (invocations.incrementAndGet() % 2 == 0) {
+                return new SchemaAndValue(null, null);
+            } else {
+                throw new DataException("Bad data");
+            }
+        });
 
         when(consumer.poll(any()))
                 .thenReturn(records(record1))
@@ -359,6 +374,8 @@ public class ErrorHandlingTaskTest {
         SourceRecord record1 = new SourceRecord(emptyMap(), emptyMap(), TOPIC, PARTITION1, valSchema, struct1);
         Struct struct2 = new Struct(valSchema).put("val", 6789);
         SourceRecord record2 = new SourceRecord(emptyMap(), emptyMap(), TOPIC, PARTITION1, valSchema, struct2);
+        when(keyConverter.fromConnectData(any(), any(), any(), any())).thenReturn(new byte[]{});
+        when(valueConverter.fromConnectData(any(), any(), any(), any())).thenReturn(new byte[]{});
 
         when(workerSourceTask.isStopping())
                 .thenReturn(false)
@@ -412,8 +429,17 @@ public class ErrorHandlingTaskTest {
 
         RetryWithToleranceOperator retryWithToleranceOperator = operator();
         retryWithToleranceOperator.reporters(singletonList(reporter));
+        AtomicInteger invocations = new AtomicInteger();
+        when(keyConverter.fromConnectData(any(), any(), any(), any())).thenReturn(new byte[]{});
+        when(valueConverter.fromConnectData(any(), any(), any(), any())).thenAnswer(invocation -> {
+            if (invocations.incrementAndGet() % 3 == 0) {
+                return new byte[]{};
+            } else {
+                throw new RetriableException("Bad invocations " + invocations + " for mod 3");
+            }
+        });
         mockSourceTransform();
-        createSourceTask(initialState, retryWithToleranceOperator, badConverter());
+        createSourceTask(initialState, retryWithToleranceOperator);
 
         // valid json
         Schema valSchema = SchemaBuilder.struct().field("val", Schema.INT32_SCHEMA).build();
@@ -510,11 +536,7 @@ public class ErrorHandlingTaskTest {
     }
 
     private void createSinkTask(TargetState initialState, RetryWithToleranceOperator retryWithToleranceOperator) {
-        JsonConverter converter = new JsonConverter();
-        Map<String, Object> oo = workerConfig.originalsWithPrefix("value.converter.");
-        oo.put("converter.type", "value");
-        oo.put("schemas.enable", "false");
-        converter.configure(oo);
+        FaultyPassthrough<SinkRecord> faultyPassthrough = new FaultyPassthrough<>();
         @SuppressWarnings("unchecked")
         PredicatedTransformation<SinkRecord> transform = (PredicatedTransformation<SinkRecord>) transformation;
         TransformationChain<SinkRecord> sinkTransforms =
@@ -522,29 +544,10 @@ public class ErrorHandlingTaskTest {
 
         workerSinkTask = new WorkerSinkTask(
             taskId, sinkTask, statusListener, initialState, workerConfig,
-            ClusterConfigState.EMPTY, metrics, converter, converter, errorHandlingMetrics,
+            ClusterConfigState.EMPTY, metrics, keyConverter, valueConverter, errorHandlingMetrics,
             headerConverter, sinkTransforms, consumer, pluginLoader, time,
             retryWithToleranceOperator, workerErrantRecordReporter,
                 statusBackingStore);
-    }
-
-    private void createSourceTask(TargetState initialState, RetryWithToleranceOperator retryWithToleranceOperator) {
-        JsonConverter converter = new JsonConverter();
-        Map<String, Object> oo = workerConfig.originalsWithPrefix("value.converter.");
-        oo.put("converter.type", "value");
-        oo.put("schemas.enable", "false");
-        converter.configure(oo);
-
-        createSourceTask(initialState, retryWithToleranceOperator, converter);
-    }
-
-    private Converter badConverter() {
-        FaultyConverter converter = new FaultyConverter();
-        Map<String, Object> oo = workerConfig.originalsWithPrefix("value.converter.");
-        oo.put("converter.type", "value");
-        oo.put("schemas.enable", "false");
-        converter.configure(oo);
-        return converter;
     }
 
     private void mockSourceTransform() {
@@ -556,15 +559,15 @@ public class ErrorHandlingTaskTest {
         when(transformation.apply(any())).thenAnswer(invocation -> faultyPassthrough.apply(invocation.getArgument(0)));
     }
 
-    private void createSourceTask(TargetState initialState, RetryWithToleranceOperator retryWithToleranceOperator, Converter converter) {
+    private void createSourceTask(TargetState initialState, RetryWithToleranceOperator retryWithToleranceOperator) {
         @SuppressWarnings("unchecked")
         PredicatedTransformation<SourceRecord> transform = (PredicatedTransformation<SourceRecord>) transformation;
         TransformationChain<SourceRecord> sourceTransforms =
                 new TransformationChain<>(singletonList(transform), retryWithToleranceOperator);
 
         workerSourceTask = spy(new WorkerSourceTask(
-            taskId, sourceTask, statusListener, initialState, converter,
-                converter, errorHandlingMetrics, headerConverter,
+            taskId, sourceTask, statusListener, initialState, keyConverter,
+                valueConverter, errorHandlingMetrics, headerConverter,
                 sourceTransforms, producer, admin,
                 TopicCreationGroup.configuredGroups(sourceConfig),
                 offsetReader, offsetWriter, offsetStore, workerConfig,
@@ -580,25 +583,6 @@ public class ErrorHandlingTaskTest {
     }
 
     private abstract static class TestSinkTask extends SinkTask {
-    }
-
-    static class FaultyConverter extends JsonConverter {
-        private static final Logger log = LoggerFactory.getLogger(FaultyConverter.class);
-        private int invocations = 0;
-
-        public byte[] fromConnectData(String topic, Schema schema, Object value) {
-            if (value == null) {
-                return super.fromConnectData(topic, schema, null);
-            }
-            invocations++;
-            if (invocations % 3 == 0) {
-                log.debug("Succeeding record: {} where invocations={}", value, invocations);
-                return super.fromConnectData(topic, schema, value);
-            } else {
-                log.debug("Failing record: {} at invocations={}", value, invocations);
-                throw new RetriableException("Bad invocations " + invocations + " for mod 3");
-            }
-        }
     }
 
     static class FaultyPassthrough<R extends ConnectRecord<R>> implements Transformation<R> {
