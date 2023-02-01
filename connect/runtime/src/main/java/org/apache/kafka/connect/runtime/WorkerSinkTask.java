@@ -40,6 +40,7 @@ import org.apache.kafka.connect.header.ConnectHeaders;
 import org.apache.kafka.connect.header.Headers;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator;
@@ -48,7 +49,6 @@ import org.apache.kafka.connect.runtime.errors.Stage;
 import org.apache.kafka.connect.runtime.errors.WorkerErrantRecordReporter;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
-import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.util.ConnectUtils;
 import org.apache.kafka.connect.util.ConnectorTaskId;
@@ -79,7 +79,7 @@ class WorkerSinkTask extends WorkerTask {
     private Map<String, String> taskConfig;
     private final IsolatedConverter keyConverter;
     private final IsolatedConverter valueConverter;
-    private final HeaderConverter headerConverter;
+    private final IsolatedHeaderConverter headerConverter;
     private final TransformationChain<SinkRecord> transformationChain;
     private final SinkTaskMetricsGroup sinkTaskMetricsGroup;
     private final boolean isTopicTrackingEnabled;
@@ -109,7 +109,7 @@ class WorkerSinkTask extends WorkerTask {
                           IsolatedConverter keyConverter,
                           IsolatedConverter valueConverter,
                           ErrorHandlingMetrics errorMetrics,
-                          HeaderConverter headerConverter,
+                          IsolatedHeaderConverter headerConverter,
                           TransformationChain<SinkRecord> transformationChain,
                           KafkaConsumer<byte[], byte[]> consumer,
                           ClassLoader loader,
@@ -522,7 +522,7 @@ class WorkerSinkTask extends WorkerTask {
         SchemaAndValue valueAndSchema = retryWithToleranceOperator.execute(() -> valueConverter.toConnectData(msg.topic(), msg.headers(), msg.value()),
                 Stage.VALUE_CONVERTER, valueConverter.pluginClass());
 
-        Headers headers = retryWithToleranceOperator.execute(() -> convertHeadersFor(msg), Stage.HEADER_CONVERTER, headerConverter.getClass());
+        Headers headers = retryWithToleranceOperator.execute(() -> convertHeadersFor(msg), Stage.HEADER_CONVERTER, headerConverter.pluginClass());
 
         if (retryWithToleranceOperator.failed()) {
             return null;
@@ -551,7 +551,7 @@ class WorkerSinkTask extends WorkerTask {
         return new InternalSinkRecord(msg, transformedRecord);
     }
 
-    private Headers convertHeadersFor(ConsumerRecord<byte[], byte[]> record) {
+    private Headers convertHeadersFor(ConsumerRecord<byte[], byte[]> record) throws Exception {
         Headers result = new ConnectHeaders();
         org.apache.kafka.common.header.Headers recordHeaders = record.headers();
         if (recordHeaders != null) {

@@ -41,13 +41,13 @@ import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator;
 import org.apache.kafka.connect.runtime.errors.Stage;
 import org.apache.kafka.connect.runtime.errors.ToleranceType;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.source.SourceTask;
 import org.apache.kafka.connect.source.SourceTaskContext;
 import org.apache.kafka.connect.storage.CloseableOffsetStorageReader;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
-import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.OffsetStorageWriter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.util.ConnectUtils;
@@ -186,7 +186,7 @@ public abstract class AbstractWorkerSourceTask extends WorkerTask {
     private final IsolatedSourceTask task;
     private final IsolatedConverter keyConverter;
     private final IsolatedConverter valueConverter;
-    private final HeaderConverter headerConverter;
+    private final IsolatedHeaderConverter headerConverter;
     private final TransformationChain<SourceRecord> transformationChain;
     private final TopicAdmin admin;
     private final CloseableOffsetStorageReader offsetReader;
@@ -208,7 +208,7 @@ public abstract class AbstractWorkerSourceTask extends WorkerTask {
                                        TargetState initialState,
                                        IsolatedConverter keyConverter,
                                        IsolatedConverter valueConverter,
-                                       HeaderConverter headerConverter,
+                                       IsolatedHeaderConverter headerConverter,
                                        TransformationChain<SourceRecord> transformationChain,
                                        WorkerSourceTaskContext sourceTaskContext,
                                        Producer<byte[], byte[]> producer,
@@ -474,7 +474,7 @@ public abstract class AbstractWorkerSourceTask extends WorkerTask {
             return null;
         }
 
-        RecordHeaders headers = retryWithToleranceOperator.execute(() -> convertHeaderFor(record), Stage.HEADER_CONVERTER, headerConverter.getClass());
+        RecordHeaders headers = retryWithToleranceOperator.execute(() -> convertHeaderFor(record), Stage.HEADER_CONVERTER, headerConverter.pluginClass());
 
         byte[] key = retryWithToleranceOperator.execute(() -> keyConverter.fromConnectData(record.topic(), headers, record.keySchema(), record.key()),
                 Stage.KEY_CONVERTER, keyConverter.pluginClass());
@@ -529,7 +529,7 @@ public abstract class AbstractWorkerSourceTask extends WorkerTask {
         }
     }
 
-    protected RecordHeaders convertHeaderFor(SourceRecord record) {
+    protected RecordHeaders convertHeaderFor(SourceRecord record) throws Exception {
         Headers headers = record.headers();
         RecordHeaders result = new RecordHeaders();
         if (headers != null) {

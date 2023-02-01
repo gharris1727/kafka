@@ -43,6 +43,7 @@ import org.apache.kafka.connect.json.JsonConverterConfig;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedTask;
@@ -65,7 +66,6 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.CloseableOffsetStorageReader;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
 import org.apache.kafka.connect.storage.Converter;
-import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.KafkaOffsetBackingStore;
 import org.apache.kafka.connect.storage.OffsetBackingStore;
 import org.apache.kafka.connect.storage.OffsetStorageReaderImpl;
@@ -623,7 +623,7 @@ public class Worker {
                 IsolatedConverter keyConverter = plugins.newConverter(connConfig, WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, ClassLoaderUsage
                                                                                                                            .CURRENT_CLASSLOADER);
                 IsolatedConverter valueConverter = plugins.newConverter(connConfig, WorkerConfig.VALUE_CONVERTER_CLASS_CONFIG, ClassLoaderUsage.CURRENT_CLASSLOADER);
-                HeaderConverter headerConverter = plugins.newHeaderConverter(connConfig, WorkerConfig.HEADER_CONVERTER_CLASS_CONFIG,
+                IsolatedHeaderConverter headerConverter = plugins.newHeaderConverter(connConfig, WorkerConfig.HEADER_CONVERTER_CLASS_CONFIG,
                                                                              ClassLoaderUsage.CURRENT_CLASSLOADER);
                 if (keyConverter == null) {
                     keyConverter = plugins.newConverter(config, WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, ClassLoaderUsage.PLUGINS);
@@ -640,9 +640,9 @@ public class Worker {
                 if (headerConverter == null) {
                     headerConverter = plugins.newHeaderConverter(config, WorkerConfig.HEADER_CONVERTER_CLASS_CONFIG, ClassLoaderUsage
                                                                                                                              .PLUGINS);
-                    log.info("Set up the header converter {} for task {} using the worker config", headerConverter.getClass(), id);
+                    log.info("Set up the header converter {} for task {} using the worker config", headerConverter.pluginClass(), id);
                 } else {
-                    log.info("Set up the header converter {} for task {} using the connector config", headerConverter.getClass(), id);
+                    log.info("Set up the header converter {} for task {} using the connector config", headerConverter.pluginClass(), id);
                 }
 
                 workerTask = taskBuilder
@@ -985,7 +985,7 @@ public class Worker {
         RetryWithToleranceOperator retryWithToleranceOperator,
         IsolatedConverter keyConverter,
         IsolatedConverter valueConverter,
-        HeaderConverter headerConverter
+        IsolatedHeaderConverter headerConverter
     ) {
         // check if errant record reporter topic is configured
         if (connConfig.enableErrantRecordReporter()) {
@@ -1159,7 +1159,7 @@ public class Worker {
         private ConnectorConfig connectorConfig = null;
         private IsolatedConverter keyConverter = null;
         private IsolatedConverter valueConverter = null;
-        private HeaderConverter headerConverter = null;
+        private IsolatedHeaderConverter headerConverter = null;
         private ClassLoader classLoader = null;
 
         public TaskBuilder(ConnectorTaskId id,
@@ -1192,7 +1192,7 @@ public class Worker {
             return this;
         }
 
-        public TaskBuilder<P> withHeaderConverter(HeaderConverter headerConverter) {
+        public TaskBuilder<P> withHeaderConverter(IsolatedHeaderConverter headerConverter) {
             this.headerConverter = headerConverter;
             return this;
         }
@@ -1229,7 +1229,7 @@ public class Worker {
                                     ConnectorConfig connectorConfig,
                                     IsolatedConverter keyConverter,
                                     IsolatedConverter valueConverter,
-                                    HeaderConverter headerConverter,
+                                    IsolatedHeaderConverter headerConverter,
                                     ClassLoader classLoader,
                                     ErrorHandlingMetrics errorHandlingMetrics,
                                     Class<? extends Connector> connectorClass,
@@ -1254,7 +1254,7 @@ public class Worker {
                            ConnectorConfig connectorConfig,
                            IsolatedConverter keyConverter,
                            IsolatedConverter valueConverter,
-                           HeaderConverter headerConverter,
+                           IsolatedHeaderConverter headerConverter,
                            ClassLoader classLoader,
                            ErrorHandlingMetrics errorHandlingMetrics,
                            Class<? extends Connector> connectorClass,
@@ -1295,7 +1295,7 @@ public class Worker {
                            ConnectorConfig connectorConfig,
                            IsolatedConverter keyConverter,
                            IsolatedConverter valueConverter,
-                           HeaderConverter headerConverter,
+                           IsolatedHeaderConverter headerConverter,
                            ClassLoader classLoader,
                            ErrorHandlingMetrics errorHandlingMetrics,
                            Class<? extends Connector> connectorClass,
@@ -1363,7 +1363,7 @@ public class Worker {
                                   ConnectorConfig connectorConfig,
                                   IsolatedConverter keyConverter,
                                   IsolatedConverter valueConverter,
-                                  HeaderConverter headerConverter,
+                                  IsolatedHeaderConverter headerConverter,
                                   ClassLoader classLoader,
                                   ErrorHandlingMetrics errorHandlingMetrics,
                                   Class<? extends Connector> connectorClass,

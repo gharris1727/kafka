@@ -35,6 +35,7 @@ import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.integration.MonitorableSourceConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
@@ -52,7 +53,6 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
-import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.OffsetStorageReaderImpl;
 import org.apache.kafka.connect.storage.OffsetStorageWriter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
@@ -161,7 +161,7 @@ public class ErrorHandlingTaskTest {
     private IsolatedConverter valueConverter;
     @SuppressWarnings("unused")
     @Mock
-    private HeaderConverter headerConverter;
+    private IsolatedHeaderConverter headerConverter;
     private WorkerSinkTask workerSinkTask;
     private WorkerSourceTask workerSourceTask;
     @SuppressWarnings("unused")

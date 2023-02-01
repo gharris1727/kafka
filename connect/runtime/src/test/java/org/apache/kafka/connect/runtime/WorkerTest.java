@@ -44,6 +44,7 @@ import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
 import org.apache.kafka.connect.runtime.MockConnectMetrics.MockMetricsReporter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceConnector;
@@ -64,7 +65,6 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.source.SourceTask;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
 import org.apache.kafka.connect.storage.Converter;
-import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.OffsetBackingStore;
 import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.util.ConnectorTaskId;
@@ -204,7 +204,7 @@ public class WorkerTest {
     @Mock private IsolatedSourceTask task;
     @Mock private IsolatedConverter taskKeyConverter;
     @Mock private IsolatedConverter taskValueConverter;
-    @Mock private HeaderConverter taskHeaderConverter;
+    @Mock private IsolatedHeaderConverter taskHeaderConverter;
     @Mock private ExecutorService executorService;
     @Mock private ConnectorConfig connectorConfig;
     private String mockFileProviderTestId;
@@ -1810,7 +1810,7 @@ public class WorkerTest {
         verify(plugins).newConverter(any(AbstractConfig.class), eq(converterClassConfig), eq(ClassLoaderUsage.CURRENT_CLASSLOADER));
     }
 
-    private void mockTaskHeaderConverter(ClassLoaderUsage classLoaderUsage, HeaderConverter returning) {
+    private void mockTaskHeaderConverter(ClassLoaderUsage classLoaderUsage, IsolatedHeaderConverter returning) {
         when(plugins.newHeaderConverter(any(AbstractConfig.class), eq(WorkerConfig.HEADER_CONVERTER_CLASS_CONFIG), eq(classLoaderUsage)))
                .thenReturn(returning);
     }

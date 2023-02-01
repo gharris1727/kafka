@@ -22,6 +22,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator;
@@ -31,7 +32,6 @@ import org.apache.kafka.connect.runtime.errors.ToleranceType;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.CloseableOffsetStorageReader;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
-import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.OffsetStorageWriter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.util.ConnectorTaskId;
@@ -68,7 +68,7 @@ class WorkerSourceTask extends AbstractWorkerSourceTask {
                             IsolatedConverter keyConverter,
                             IsolatedConverter valueConverter,
                             ErrorHandlingMetrics errorMetrics,
-                            HeaderConverter headerConverter,
+                            IsolatedHeaderConverter headerConverter,
                             TransformationChain<SourceRecord> transformationChain,
                             Producer<byte[], byte[]> producer,
                             TopicAdmin admin,

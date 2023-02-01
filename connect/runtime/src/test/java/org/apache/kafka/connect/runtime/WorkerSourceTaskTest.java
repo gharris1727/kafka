@@ -33,6 +33,7 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.integration.MonitorableSourceConnector;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator;
@@ -45,7 +46,6 @@ import org.apache.kafka.connect.source.SourceTask;
 import org.apache.kafka.connect.source.SourceTaskContext;
 import org.apache.kafka.connect.storage.CloseableOffsetStorageReader;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
-import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.OffsetStorageWriter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.storage.StringConverter;
@@ -135,7 +135,7 @@ public class WorkerSourceTaskTest {
     @Mock private IsolatedSourceTask sourceTask;
     @Mock private IsolatedConverter keyConverter;
     @Mock private IsolatedConverter valueConverter;
-    @Mock private HeaderConverter headerConverter;
+    @Mock private IsolatedHeaderConverter headerConverter;
     @Mock private TransformationChain<SourceRecord> transformationChain;
     @Mock private KafkaProducer<byte[], byte[]> producer;
     @Mock private TopicAdmin admin;
@@ -231,7 +231,7 @@ public class WorkerSourceTaskTest {
     }
 
     private void createWorkerTask(TargetState initialState, IsolatedConverter keyConverter, IsolatedConverter valueConverter,
-                                  HeaderConverter headerConverter, RetryWithToleranceOperator retryWithToleranceOperator) {
+                                  IsolatedHeaderConverter headerConverter, RetryWithToleranceOperator retryWithToleranceOperator) {
         workerTask = new WorkerSourceTask(taskId, sourceTask, statusListener, initialState, keyConverter, valueConverter, errorHandlingMetrics, headerConverter,
                 transformationChain, producer, admin, TopicCreationGroup.configuredGroups(sourceConfig),
                 offsetReader, offsetWriter, offsetStore, config, clusterConfigState, metrics, plugins.delegatingLoader(), Time.SYSTEM,

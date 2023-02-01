@@ -24,7 +24,7 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.runtime.ConnectorConfig;
 import org.apache.kafka.connect.runtime.InternalSinkRecord;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
-import org.apache.kafka.connect.storage.HeaderConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -49,7 +49,7 @@ public class WorkerErrantRecordReporterTest {
     private WorkerErrantRecordReporter reporter;
 
     @Mock private IsolatedConverter converter;
-    @Mock private HeaderConverter headerConverter;
+    @Mock private IsolatedHeaderConverter headerConverter;
     @Mock private InternalSinkRecord record;
     @Mock private ErrorHandlingMetrics errorHandlingMetrics;
     @Mock private ErrorReporter errorReporter;

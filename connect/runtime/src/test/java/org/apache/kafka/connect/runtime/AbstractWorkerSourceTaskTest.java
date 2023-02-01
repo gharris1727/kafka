@@ -41,12 +41,12 @@ import org.apache.kafka.connect.runtime.errors.ErrorHandlingMetrics;
 import org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperatorTest;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceTask;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.CloseableOffsetStorageReader;
 import org.apache.kafka.connect.storage.ConnectorOffsetBackingStore;
-import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.OffsetStorageWriter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.storage.StringConverter;
@@ -122,7 +122,7 @@ public class AbstractWorkerSourceTaskTest {
     @Mock private KafkaProducer<byte[], byte[]> producer;
     @Mock private IsolatedConverter keyConverter;
     @Mock private IsolatedConverter valueConverter;
-    @Mock private HeaderConverter headerConverter;
+    @Mock private IsolatedHeaderConverter headerConverter;
     @Mock private TransformationChain<SourceRecord> transformationChain;
     @Mock private CloseableOffsetStorageReader offsetReader;
     @Mock private OffsetStorageWriter offsetWriter;
@@ -232,7 +232,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsConvertsData() {
+    public void testSendRecordsConvertsData() throws Exception {
         createWorkerTask();
 
         List<SourceRecord> records = new ArrayList<>();
@@ -254,7 +254,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsPropagatesTimestamp() {
+    public void testSendRecordsPropagatesTimestamp() throws Exception {
         final Long timestamp = System.currentTimeMillis();
 
         createWorkerTask();
@@ -277,7 +277,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsCorruptTimestamp() {
+    public void testSendRecordsCorruptTimestamp() throws Exception {
         final Long timestamp = -3L;
         createWorkerTask();
 
@@ -297,7 +297,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsNoTimestamp() {
+    public void testSendRecordsNoTimestamp() throws Exception {
         final Long timestamp = -1L;
         createWorkerTask();
 
@@ -319,7 +319,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testHeaders() {
+    public void testHeaders() throws Exception {
         Headers headers = new RecordHeaders();
         headers.add("header_key", "header_value".getBytes());
 
@@ -348,9 +348,8 @@ public class AbstractWorkerSourceTaskTest {
 
     @Test
     public void testHeadersWithCustomConverter() throws Exception {
-        StringConverter stringConverter = new StringConverter();
 
-        createWorkerTask(keyConverter, valueConverter, stringConverter);
+        createWorkerTask(keyConverter, valueConverter, headerConverter);
 
         List<SourceRecord> records = new ArrayList<>();
 
@@ -396,7 +395,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testTopicCreateWhenTopicExists() {
+    public void testTopicCreateWhenTopicExists() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
@@ -417,7 +416,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsTopicDescribeRetries() {
+    public void testSendRecordsTopicDescribeRetries() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
@@ -446,7 +445,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsTopicCreateRetries() {
+    public void testSendRecordsTopicCreateRetries() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
@@ -476,7 +475,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsTopicDescribeRetriesMidway() {
+    public void testSendRecordsTopicDescribeRetriesMidway() throws Exception {
         createWorkerTask();
 
         // Differentiate only by Kafka partition so we can reuse conversion expectations
@@ -513,7 +512,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testSendRecordsTopicCreateRetriesMidway() {
+    public void testSendRecordsTopicCreateRetriesMidway() throws Exception {
         createWorkerTask();
 
         // Differentiate only by Kafka partition so we can reuse conversion expectations
@@ -552,7 +551,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testTopicDescribeFails() {
+    public void testTopicDescribeFails() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
@@ -569,7 +568,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testTopicCreateFails() {
+    public void testTopicCreateFails() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
@@ -590,7 +589,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testTopicCreateFailsWithExceptionWhenCreateReturnsTopicNotCreatedOrFound() {
+    public void testTopicCreateFailsWithExceptionWhenCreateReturnsTopicNotCreatedOrFound() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
@@ -610,7 +609,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testTopicCreateSucceedsWhenCreateReturnsExistingTopicFound() {
+    public void testTopicCreateSucceedsWhenCreateReturnsExistingTopicFound() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
@@ -632,7 +631,7 @@ public class AbstractWorkerSourceTaskTest {
     }
 
     @Test
-    public void testTopicCreateSucceedsWhenCreateReturnsNewTopicFound() {
+    public void testTopicCreateSucceedsWhenCreateReturnsNewTopicFound() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
@@ -657,7 +656,7 @@ public class AbstractWorkerSourceTaskTest {
             String topic,
             boolean anyTimes,
             Headers headers
-    ) {
+    ) throws Exception {
         if (headers != null)
             expectConvertHeadersAndKeyValue(topic, anyTimes, headers);
 
@@ -688,11 +687,11 @@ public class AbstractWorkerSourceTaskTest {
         return sent;
     }
 
-    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordAnyTimes() {
+    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecordAnyTimes() throws Exception {
         return expectSendRecord(TOPIC, true, emptyHeaders());
     }
 
-    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecord() {
+    private Capture<ProducerRecord<byte[], byte[]>> expectSendRecord() throws Exception {
         return expectSendRecord(TOPIC, false, emptyHeaders());
     }
 
@@ -739,17 +738,17 @@ public class AbstractWorkerSourceTaskTest {
         return new TopicAdmin.TopicCreationResponse(created, existing);
     }
 
-    private void expectPreliminaryCalls() {
+    private void expectPreliminaryCalls() throws Exception {
         expectPreliminaryCalls(TOPIC);
     }
 
-    private void expectPreliminaryCalls(String topic) {
+    private void expectPreliminaryCalls(String topic) throws Exception {
         expectConvertHeadersAndKeyValue(topic, true, emptyHeaders());
         expectApplyTransformationChain(false);
         PowerMock.expectLastCall();
     }
 
-    private void expectConvertHeadersAndKeyValue(String topic, boolean anyTimes, Headers headers) {
+    private void expectConvertHeadersAndKeyValue(String topic, boolean anyTimes, Headers headers) throws Exception {
         for (Header header : headers) {
             IExpectationSetters<byte[]> convertHeaderExpect = EasyMock.expect(headerConverter.fromConnectHeader(topic, header.key(), Schema.STRING_SCHEMA, new String(header.value())));
             if (anyTimes)
@@ -786,7 +785,7 @@ public class AbstractWorkerSourceTaskTest {
         createWorkerTask(keyConverter, valueConverter, headerConverter);
     }
 
-    private void createWorkerTask(IsolatedConverter keyConverter, IsolatedConverter valueConverter, HeaderConverter headerConverter) {
+    private void createWorkerTask(IsolatedConverter keyConverter, IsolatedConverter valueConverter, IsolatedHeaderConverter headerConverter) {
         workerTask = new AbstractWorkerSourceTask(
                 taskId, sourceTask, statusListener, TargetState.STARTED, keyConverter, valueConverter, headerConverter, transformationChain,
                 sourceTaskContext, producer, admin, TopicCreationGroup.configuredGroups(sourceConfig), offsetReader, offsetWriter, offsetStore,

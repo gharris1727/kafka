@@ -24,11 +24,11 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.header.Header;
 import org.apache.kafka.connect.runtime.InternalSinkRecord;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.sink.ErrantRecordReporter;
 import org.apache.kafka.connect.sink.SinkRecord;
 
 import org.apache.kafka.connect.sink.SinkTask;
-import org.apache.kafka.connect.storage.HeaderConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +52,7 @@ public class WorkerErrantRecordReporter implements ErrantRecordReporter {
     private final RetryWithToleranceOperator retryWithToleranceOperator;
     private final IsolatedConverter keyConverter;
     private final IsolatedConverter valueConverter;
-    private final HeaderConverter headerConverter;
+    private final IsolatedHeaderConverter headerConverter;
 
     // Visible for testing
     protected final ConcurrentMap<TopicPartition, List<Future<Void>>> futures;
@@ -61,7 +61,7 @@ public class WorkerErrantRecordReporter implements ErrantRecordReporter {
         RetryWithToleranceOperator retryWithToleranceOperator,
         IsolatedConverter keyConverter,
         IsolatedConverter valueConverter,
-        HeaderConverter headerConverter
+        IsolatedHeaderConverter headerConverter
     ) {
         this.retryWithToleranceOperator = retryWithToleranceOperator;
         this.keyConverter = keyConverter;

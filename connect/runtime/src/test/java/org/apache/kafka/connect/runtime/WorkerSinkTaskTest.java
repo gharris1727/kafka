@@ -40,6 +40,7 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.runtime.ConnectMetrics.MetricGroup;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
+import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkTask;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.WorkerSinkTask.SinkTaskMetricsGroup;
@@ -50,9 +51,7 @@ import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.sink.SinkConnector;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
-import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
-import org.apache.kafka.connect.storage.StringConverter;
 import org.apache.kafka.connect.util.ConnectorTaskId;
 import org.easymock.Capture;
 import org.easymock.CaptureType;
@@ -148,7 +147,7 @@ public class WorkerSinkTaskTest {
     @Mock
     private IsolatedConverter valueConverter;
     @Mock
-    private HeaderConverter headerConverter;
+    private IsolatedHeaderConverter headerConverter;
     @Mock
     private TransformationChain<SinkRecord> transformationChain;
     @Mock
@@ -183,7 +182,7 @@ public class WorkerSinkTaskTest {
         createTask(initialState, keyConverter, valueConverter, headerConverter);
     }
 
-    private void createTask(TargetState initialState, IsolatedConverter keyConverter, IsolatedConverter valueConverter, HeaderConverter headerConverter) {
+    private void createTask(TargetState initialState, IsolatedConverter keyConverter, IsolatedConverter valueConverter, IsolatedHeaderConverter headerConverter) {
         workerTask = new WorkerSinkTask(
             taskId, sinkTask, statusListener, initialState, workerConfig, ClusterConfigState.EMPTY, metrics,
             keyConverter, valueConverter, errorHandlingMetrics, headerConverter,
@@ -1819,9 +1818,8 @@ public class WorkerSinkTaskTest {
 
     @Test
     public void testHeadersWithCustomConverter() throws Exception {
-        StringConverter stringConverter = new StringConverter();
 
-        createTask(initialState, keyConverter, valueConverter, stringConverter);
+        createTask(initialState, keyConverter, valueConverter, headerConverter);
 
         expectInitializeTask();
         expectTaskGetTopic(true);
