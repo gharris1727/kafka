@@ -21,12 +21,12 @@ import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.health.ConnectClusterDetails;
-import org.apache.kafka.connect.rest.ConnectRestExtension;
 import org.apache.kafka.connect.rest.ConnectRestExtensionContext;
 import org.apache.kafka.connect.runtime.Herder;
 import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.runtime.health.ConnectClusterDetailsImpl;
 import org.apache.kafka.connect.runtime.health.ConnectClusterStateImpl;
+import org.apache.kafka.connect.runtime.isolation.IsolatedRestExtension;
 import org.apache.kafka.connect.runtime.rest.errors.ConnectExceptionMapper;
 import org.apache.kafka.connect.runtime.rest.resources.ConnectResource;
 import org.apache.kafka.connect.runtime.rest.resources.ConnectorPluginsResource;
@@ -91,7 +91,7 @@ public class RestServer {
     private final Server jettyServer;
 
     private Collection<ConnectResource> resources;
-    private List<ConnectRestExtension> connectRestExtensions = Collections.emptyList();
+    private List<IsolatedRestExtension> connectRestExtensions = Collections.emptyList();
 
     /**
      * Create a REST server for this herder using the specified configs.
@@ -213,7 +213,7 @@ public class RestServer {
         log.info("REST admin endpoints at " + adminUrl());
     }
 
-    public void initializeResources(Herder herder) {
+    public void initializeResources(Herder herder) throws Exception {
         log.info("Initializing REST resources");
 
         ResourceConfig resourceConfig = new ResourceConfig();
@@ -317,11 +317,11 @@ public class RestServer {
         log.info("Stopping REST server");
 
         try {
-            for (ConnectRestExtension connectRestExtension : connectRestExtensions) {
+            for (IsolatedRestExtension connectRestExtension : connectRestExtensions) {
                 try {
                     connectRestExtension.close();
                 } catch (IOException e) {
-                    log.warn("Error while invoking close on " + connectRestExtension.getClass(), e);
+                    log.warn("Error while invoking close on " + connectRestExtension.pluginClass(), e);
                 }
             }
             jettyServer.stop();
@@ -440,10 +440,10 @@ public class RestServer {
         return null;
     }
 
-    void registerRestExtensions(Herder herder, ResourceConfig resourceConfig) {
-        connectRestExtensions = herder.plugins().newPlugins(
+    void registerRestExtensions(Herder herder, ResourceConfig resourceConfig) throws Exception {
+        connectRestExtensions = herder.plugins().newRestExtensions(
             config.getList(WorkerConfig.REST_EXTENSION_CLASSES_CONFIG),
-            config, ConnectRestExtension.class);
+            config);
 
         long herderRequestTimeoutMs = ConnectResource.DEFAULT_REST_REQUEST_TIMEOUT_MS;
 
@@ -462,7 +462,7 @@ public class RestServer {
                 new ConnectRestConfigurable(resourceConfig),
                 new ConnectClusterStateImpl(herderRequestTimeoutMs, connectClusterDetails, herder)
             );
-        for (ConnectRestExtension connectRestExtension : connectRestExtensions) {
+        for (IsolatedRestExtension connectRestExtension : connectRestExtensions) {
             connectRestExtension.register(connectRestExtensionContext);
         }
 

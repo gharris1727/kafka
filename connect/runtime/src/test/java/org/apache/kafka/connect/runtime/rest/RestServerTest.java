@@ -31,7 +31,6 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.utils.LogCaptureAppender;
-import org.apache.kafka.connect.rest.ConnectRestExtension;
 import org.apache.kafka.connect.runtime.Herder;
 import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.runtime.distributed.DistributedConfig;
@@ -109,12 +108,12 @@ public class RestServerTest {
     }
 
     @Test
-    public void testCORSEnabled() throws IOException {
+    public void testCORSEnabled() throws Exception {
         checkCORSRequest("*", "http://bar.com", "http://bar.com", "PUT");
     }
 
     @Test
-    public void testCORSDisabled() throws IOException {
+    public void testCORSDisabled() throws Exception {
         checkCORSRequest("", "http://bar.com", null, null);
     }
 
@@ -171,13 +170,13 @@ public class RestServerTest {
     }
 
     @Test
-    public void testOptionsDoesNotIncludeWadlOutput() throws IOException {
+    public void testOptionsDoesNotIncludeWadlOutput() throws Exception {
         Map<String, String> configMap = new HashMap<>(baseWorkerProps());
         DistributedConfig workerConfig = new DistributedConfig(configMap);
 
         doReturn(KAFKA_CLUSTER_ID).when(herder).kafkaClusterId();
         doReturn(plugins).when(herder).plugins();
-        doReturn(Collections.emptyList()).when(plugins).newPlugins(Collections.emptyList(), workerConfig, ConnectRestExtension.class);
+        doReturn(Collections.emptyList()).when(plugins).newRestExtensions(Collections.emptyList(), workerConfig);
 
         server = new RestServer(workerConfig, null);
         server.initializeServer();
@@ -196,7 +195,7 @@ public class RestServerTest {
     }
 
     public void checkCORSRequest(String corsDomain, String origin, String expectedHeader, String method)
-        throws IOException {
+        throws Exception {
         Map<String, String> workerProps = baseWorkerProps();
         workerProps.put(WorkerConfig.ACCESS_CONTROL_ALLOW_ORIGIN_CONFIG, corsDomain);
         workerProps.put(WorkerConfig.ACCESS_CONTROL_ALLOW_METHODS_CONFIG, method);
@@ -204,7 +203,7 @@ public class RestServerTest {
 
         doReturn(KAFKA_CLUSTER_ID).when(herder).kafkaClusterId();
         doReturn(plugins).when(herder).plugins();
-        doReturn(Collections.emptyList()).when(plugins).newPlugins(Collections.emptyList(), workerConfig, ConnectRestExtension.class);
+        doReturn(Collections.emptyList()).when(plugins).newRestExtensions(Collections.emptyList(), workerConfig);
         doReturn(Arrays.asList("a", "b")).when(herder).connectors();
 
         server = new RestServer(workerConfig, null);
@@ -241,14 +240,14 @@ public class RestServerTest {
     }
 
     @Test
-    public void testStandaloneConfig() throws IOException  {
+    public void testStandaloneConfig() throws Exception {
         Map<String, String> workerProps = baseWorkerProps();
         workerProps.put("offset.storage.file.filename", "/tmp");
         WorkerConfig workerConfig = new StandaloneConfig(workerProps);
 
         doReturn(KAFKA_CLUSTER_ID).when(herder).kafkaClusterId();
         doReturn(plugins).when(herder).plugins();
-        doReturn(Collections.emptyList()).when(plugins).newPlugins(Collections.emptyList(), workerConfig, ConnectRestExtension.class);
+        doReturn(Collections.emptyList()).when(plugins).newRestExtensions(Collections.emptyList(), workerConfig);
         doReturn(Arrays.asList("a", "b")).when(herder).connectors();
 
         server = new RestServer(workerConfig, null);
@@ -261,13 +260,13 @@ public class RestServerTest {
     }
 
     @Test
-    public void testLoggersEndpointWithDefaults() throws IOException {
+    public void testLoggersEndpointWithDefaults() throws Exception {
         Map<String, String> configMap = new HashMap<>(baseWorkerProps());
         DistributedConfig workerConfig = new DistributedConfig(configMap);
 
         doReturn(KAFKA_CLUSTER_ID).when(herder).kafkaClusterId();
         doReturn(plugins).when(herder).plugins();
-        doReturn(Collections.emptyList()).when(plugins).newPlugins(Collections.emptyList(), workerConfig, ConnectRestExtension.class);
+        doReturn(Collections.emptyList()).when(plugins).newRestExtensions(Collections.emptyList(), workerConfig);
 
         // create some loggers in the process
         LoggerFactory.getLogger("a.b.c.s.W");
@@ -291,7 +290,7 @@ public class RestServerTest {
     }
 
     @Test
-    public void testIndependentAdminEndpoint() throws IOException {
+    public void testIndependentAdminEndpoint() throws Exception {
         Map<String, String> configMap = new HashMap<>(baseWorkerProps());
         configMap.put(ADMIN_LISTENERS_CONFIG, "http://localhost:0");
 
@@ -299,7 +298,7 @@ public class RestServerTest {
 
         doReturn(KAFKA_CLUSTER_ID).when(herder).kafkaClusterId();
         doReturn(plugins).when(herder).plugins();
-        doReturn(Collections.emptyList()).when(plugins).newPlugins(Collections.emptyList(), workerConfig, ConnectRestExtension.class);
+        doReturn(Collections.emptyList()).when(plugins).newRestExtensions(Collections.emptyList(), workerConfig);
 
         // create some loggers in the process
         LoggerFactory.getLogger("a.b.c.s.W");
@@ -321,7 +320,7 @@ public class RestServerTest {
     }
 
     @Test
-    public void testDisableAdminEndpoint() throws IOException {
+    public void testDisableAdminEndpoint() throws Exception {
         Map<String, String> configMap = new HashMap<>(baseWorkerProps());
         configMap.put(ADMIN_LISTENERS_CONFIG, "");
 
@@ -329,7 +328,7 @@ public class RestServerTest {
 
         doReturn(KAFKA_CLUSTER_ID).when(herder).kafkaClusterId();
         doReturn(plugins).when(herder).plugins();
-        doReturn(Collections.emptyList()).when(plugins).newPlugins(Collections.emptyList(), workerConfig, ConnectRestExtension.class);
+        doReturn(Collections.emptyList()).when(plugins).newRestExtensions(Collections.emptyList(), workerConfig);
 
         server = new RestServer(workerConfig, null);
         server.initializeServer();
@@ -343,13 +342,13 @@ public class RestServerTest {
     }
 
     @Test
-    public void testRequestLogs() throws IOException, InterruptedException {
+    public void testRequestLogs() throws Exception {
         Map<String, String> configMap = new HashMap<>(baseWorkerProps());
         DistributedConfig workerConfig = new DistributedConfig(configMap);
 
         doReturn(KAFKA_CLUSTER_ID).when(herder).kafkaClusterId();
         doReturn(plugins).when(herder).plugins();
-        doReturn(Collections.emptyList()).when(plugins).newPlugins(Collections.emptyList(), workerConfig, ConnectRestExtension.class);
+        doReturn(Collections.emptyList()).when(plugins).newRestExtensions(Collections.emptyList(), workerConfig);
 
         server = new RestServer(workerConfig, null);
         server.initializeServer();
@@ -370,7 +369,7 @@ public class RestServerTest {
     }
 
     @Test
-    public void testValidCustomizedHttpResponseHeaders() throws IOException  {
+    public void testValidCustomizedHttpResponseHeaders() throws Exception {
         String headerConfig =
                 "add X-XSS-Protection: 1; mode=block, \"add Cache-Control: no-cache, no-store, must-revalidate\"";
         Map<String, String> expectedHeaders = new HashMap<>();
@@ -380,14 +379,14 @@ public class RestServerTest {
     }
 
     @Test
-    public void testDefaultCustomizedHttpResponseHeaders() throws IOException  {
+    public void testDefaultCustomizedHttpResponseHeaders() throws Exception {
         String headerConfig = "";
         Map<String, String> expectedHeaders = new HashMap<>();
         checkCustomizedHttpResponseHeaders(headerConfig, expectedHeaders);
     }
 
     private void checkCustomizedHttpResponseHeaders(String headerConfig, Map<String, String> expectedHeaders)
-            throws IOException  {
+            throws Exception {
         Map<String, String> workerProps = baseWorkerProps();
         workerProps.put("offset.storage.file.filename", "/tmp");
         workerProps.put(WorkerConfig.RESPONSE_HTTP_HEADERS_CONFIG, headerConfig);
@@ -395,7 +394,7 @@ public class RestServerTest {
 
         doReturn(KAFKA_CLUSTER_ID).when(herder).kafkaClusterId();
         doReturn(plugins).when(herder).plugins();
-        doReturn(Collections.emptyList()).when(plugins).newPlugins(Collections.emptyList(), workerConfig, ConnectRestExtension.class);
+        doReturn(Collections.emptyList()).when(plugins).newRestExtensions(Collections.emptyList(), workerConfig);
         doReturn(Arrays.asList("a", "b")).when(herder).connectors();
 
         server = new RestServer(workerConfig, null);

@@ -45,7 +45,7 @@ public class Connect {
         shutdownHook = new ShutdownHook();
     }
 
-    public void start() {
+    public void start() throws Exception {
         try {
             log.info("Kafka Connect starting");
             Exit.addShutdownHook("connect-shutdown-hook", shutdownHook);
