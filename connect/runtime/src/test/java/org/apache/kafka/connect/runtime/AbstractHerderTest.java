@@ -23,7 +23,6 @@ import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.ConfigTransformer;
 import org.apache.kafka.common.config.ConfigValue;
 import org.apache.kafka.common.config.SaslConfigs;
-import org.apache.kafka.common.config.provider.DirectoryConfigProvider;
 import org.apache.kafka.common.security.oauthbearer.internals.unsecured.OAuthBearerUnsecuredLoginCallbackHandler;
 import org.apache.kafka.connect.connector.Connector;
 import org.apache.kafka.connect.connector.policy.AllConnectorClientConfigOverridePolicy;
@@ -36,6 +35,7 @@ import org.apache.kafka.connect.runtime.isolation.IsolatedConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedHeaderConverter;
 import org.apache.kafka.connect.runtime.isolation.IsolatedOverridePolicy;
+import org.apache.kafka.connect.runtime.isolation.IsolatedPlugin;
 import org.apache.kafka.connect.runtime.isolation.IsolatedPredicate;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSinkConnector;
 import org.apache.kafka.connect.runtime.isolation.IsolatedSourceConnector;
@@ -53,6 +53,7 @@ import org.apache.kafka.connect.runtime.rest.entities.ConnectorInfo;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorType;
 import org.apache.kafka.connect.runtime.rest.errors.BadRequestException;
 import org.apache.kafka.connect.source.SourceConnector;
+import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.storage.ConfigBackingStore;
 import org.apache.kafka.connect.storage.StatusBackingStore;
@@ -64,6 +65,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.stubbing.OngoingStubbing;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -81,6 +83,7 @@ import java.util.stream.Collectors;
 import static org.apache.kafka.connect.runtime.AbstractHerder.keysWithVariableValues;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
@@ -909,39 +912,64 @@ public class AbstractHerderTest {
                 .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
-        when(plugins.newPlugin(anyString())).then(invocation -> {
-            String name = invocation.getArgument(0);
-            switch (name) {
-                case "sink": return new SampleSinkConnector();
-                case "source": return new SampleSourceConnector();
-                case "converter": return new SampleConverterWithHeaders();
-                case "header-converter": return new SampleHeaderConverter();
-                case "predicate": return new SamplePredicate();
-                default: return new SampleTransformation<>();
-            }
-        });
         when(herder.plugins()).thenReturn(plugins);
 
+        IsolatedSinkConnector sinkConnector = mock(IsolatedSinkConnector.class);
+        OngoingStubbing<IsolatedPlugin<?>> newSink = when(plugins.newPlugin("sink"));
+        newSink.thenReturn(sinkConnector);
+        when(sinkConnector.type()).thenReturn(PluginType.SINK);
+        ConfigDef sinkConfig = new SampleSinkConnector().config();
+        when(sinkConnector.config()).thenReturn(sinkConfig);
         List<ConfigKeyInfo> sinkConnectorConfigs = herder.connectorPluginConfig("sink");
         assertNotNull(sinkConnectorConfigs);
-        assertEquals(new SampleSinkConnector().config().names().size(), sinkConnectorConfigs.size());
+        assertEquals(sinkConfig.names().size(), sinkConnectorConfigs.size());
 
+        IsolatedSourceConnector sourceConnector = mock(IsolatedSourceConnector.class);
+        OngoingStubbing<IsolatedPlugin<?>> newSource = when(plugins.newPlugin("source"));
+        newSource.thenReturn(sourceConnector);
+        when(sourceConnector.type()).thenReturn(PluginType.SOURCE);
+        ConfigDef sourceConfig = new SampleSourceConnector().config();
+        when(sourceConnector.config()).thenReturn(sourceConfig);
         List<ConfigKeyInfo> sourceConnectorConfigs = herder.connectorPluginConfig("source");
         assertNotNull(sourceConnectorConfigs);
-        assertEquals(new SampleSourceConnector().config().names().size(), sourceConnectorConfigs.size());
+        assertEquals(sourceConfig.names().size(), sourceConnectorConfigs.size());
 
+        IsolatedConverter converter = mock(IsolatedConverter.class);
+        OngoingStubbing<IsolatedPlugin<?>> newConverter = when(plugins.newPlugin("converter"));
+        newConverter.thenReturn(converter);
+        when(converter.type()).thenReturn(PluginType.CONVERTER);
+        ConfigDef converterConfig = new SampleConverterWithHeaders().config();
+        when(converter.config()).thenReturn(converterConfig);
         List<ConfigKeyInfo> converterConfigs = herder.connectorPluginConfig("converter");
         assertNotNull(converterConfigs);
-        assertEquals(new SampleConverterWithHeaders().config().names().size(), converterConfigs.size());
+        assertEquals(converterConfig.names().size(), converterConfigs.size());
 
+        IsolatedHeaderConverter headerConverter = mock(IsolatedHeaderConverter.class);
+        OngoingStubbing<IsolatedPlugin<?>> newHeaderConverter = when(plugins.newPlugin("header-converter"));
+        newHeaderConverter.thenReturn(headerConverter);
+        when(headerConverter.type()).thenReturn(PluginType.HEADER_CONVERTER);
+        ConfigDef headerConverterConfig = new SampleHeaderConverter().config();
+        when(headerConverter.config()).thenReturn(headerConverterConfig);
         List<ConfigKeyInfo> headerConverterConfigs = herder.connectorPluginConfig("header-converter");
         assertNotNull(headerConverterConfigs);
-        assertEquals(new SampleHeaderConverter().config().names().size(), headerConverterConfigs.size());
+        assertEquals(headerConverterConfig.names().size(), headerConverterConfigs.size());
 
+        IsolatedPredicate<?> predicate = mock(IsolatedPredicate.class);
+        OngoingStubbing<IsolatedPlugin<?>> newPredicate = when(plugins.newPlugin("predicate"));
+        newPredicate.thenReturn(predicate);
+        when(predicate.type()).thenReturn(PluginType.PREDICATE);
+        ConfigDef predicateConfig = new SamplePredicate().config();
+        when(predicate.config()).thenReturn(predicateConfig);
         List<ConfigKeyInfo> predicateConfigs = herder.connectorPluginConfig("predicate");
         assertNotNull(predicateConfigs);
-        assertEquals(new SamplePredicate().config().names().size(), predicateConfigs.size());
+        assertEquals(predicateConfig.names().size(), predicateConfigs.size());
 
+        IsolatedTransformation<?> transformation = mock(IsolatedTransformation.class);
+        OngoingStubbing<IsolatedPlugin<?>> newTransformation = when(plugins.newPlugin("transformation"));
+        newTransformation.thenReturn(transformation);
+        when(transformation.type()).thenReturn(PluginType.TRANSFORMATION);
+        ConfigDef transformationConfig = new SampleTransformation<SourceRecord>().config();
+        when(transformation.config()).thenReturn(transformationConfig);
         List<ConfigKeyInfo> transformationConfigs = herder.connectorPluginConfig("transformation");
         assertNotNull(transformationConfigs);
         assertEquals(new SampleTransformation<>().config().names().size(), transformationConfigs.size());
@@ -965,7 +993,10 @@ public class AbstractHerderTest {
                 .useConstructor(worker, workerId, kafkaClusterId, statusStore, configStore, overridePolicy)
                 .defaultAnswer(CALLS_REAL_METHODS));
         when(worker.getPlugins()).thenReturn(plugins);
-        when(plugins.newPlugin(anyString())).thenReturn(new DirectoryConfigProvider());
+        OngoingStubbing<IsolatedPlugin<?>> newConnector = when(plugins.newPlugin(anyString()));
+        IsolatedConfigProvider configProvider = mock(IsolatedConfigProvider.class);
+        newConnector.thenReturn(configProvider);
+        when(configProvider.type()).thenReturn(PluginType.CONFIGPROVIDER);
         herder.connectorPluginConfig(connName);
     }
 
