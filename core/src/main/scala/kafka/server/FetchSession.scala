@@ -303,7 +303,7 @@ class FetchSession(val id: Int,
   }
 }
 
-trait FetchContext extends Logging {
+trait FetchContext {
   /**
     * Get the fetch offset for a given partition.
     */
@@ -326,8 +326,8 @@ trait FetchContext extends Logging {
     */
   def updateAndGenerateResponseData(updates: FetchSession.RESP_MAP): FetchResponse
 
-  def partitionsToLogString(partitions: util.Collection[TopicIdPartition]): String =
-    FetchSession.partitionsToLogString(partitions, isTraceEnabled)
+  def partitionsToLogString(partitions: util.Collection[TopicIdPartition], log: Logging): String =
+    FetchSession.partitionsToLogString(partitions, log.isTraceEnabled)
 
   /**
     * Return an empty throttled response due to quota violation.
@@ -351,9 +351,13 @@ class SessionErrorContext(val error: Errors,
 
   // Because of the fetch session error, we don't know what partitions were supposed to be in this request.
   override def updateAndGenerateResponseData(updates: FetchSession.RESP_MAP): FetchResponse = {
-    debug(s"Session error fetch context returning $error")
+    SessionErrorContext.debug(s"Session error fetch context returning $error")
     FetchResponse.of(error, 0, INVALID_SESSION_ID, new FetchSession.RESP_MAP)
   }
+}
+
+object SessionErrorContext extends Logging {
+
 }
 
 /**
@@ -374,9 +378,11 @@ class SessionlessFetchContext(val fetchData: util.Map[TopicIdPartition, FetchReq
   }
 
   override def updateAndGenerateResponseData(updates: FetchSession.RESP_MAP): FetchResponse = {
-    debug(s"Sessionless fetch context returning ${partitionsToLogString(updates.keySet)}")
+    SessionlessFetchContext.debug(s"Sessionless fetch context returning ${partitionsToLogString(updates.keySet, SessionlessFetchContext)}")
     FetchResponse.of(Errors.NONE, 0, INVALID_SESSION_ID, updates)
   }
+}
+object SessionlessFetchContext extends Logging {
 }
 
 /**
@@ -417,10 +423,13 @@ class FullFetchContext(private val time: Time,
     }
     val responseSessionId = cache.maybeCreateSession(time.milliseconds(), isFromFollower,
         updates.size, usesTopicIds, () => createNewSession)
-    debug(s"Full fetch context with session id $responseSessionId returning " +
-      s"${partitionsToLogString(updates.keySet)}")
+    FullFetchContext.debug(s"Full fetch context with session id $responseSessionId returning " +
+      s"${partitionsToLogString(updates.keySet, FullFetchContext)}")
     FetchResponse.of(Errors.NONE, 0, responseSessionId, updates)
   }
+}
+
+object FullFetchContext extends Logging {
 }
 
 /**
@@ -508,7 +517,7 @@ class IncrementalFetchContext(private val time: Time,
       // creating this fetch context and generating this response.
       val expectedEpoch = JFetchMetadata.nextEpoch(reqMetadata.epoch)
       if (session.epoch != expectedEpoch) {
-        info(s"Incremental fetch session ${session.id} expected epoch $expectedEpoch, but " +
+        IncrementalFetchContext.info(s"Incremental fetch session ${session.id} expected epoch $expectedEpoch, but " +
           s"got ${session.epoch}.  Possible duplicate request.")
         FetchResponse.of(Errors.INVALID_FETCH_SESSION_EPOCH, 0, session.id, new FetchSession.RESP_MAP)
       } else {
@@ -517,8 +526,8 @@ class IncrementalFetchContext(private val time: Time,
         while (partitionIter.hasNext) {
           partitionIter.next()
         }
-        debug(s"Incremental fetch context with session id ${session.id} returning " +
-          s"${partitionsToLogString(updates.keySet)}")
+        IncrementalFetchContext.debug(s"Incremental fetch context with session id ${session.id} returning " +
+          s"${partitionsToLogString(updates.keySet, IncrementalFetchContext)}")
         FetchResponse.of(Errors.NONE, 0, session.id, updates)
       }
     }
@@ -530,7 +539,7 @@ class IncrementalFetchContext(private val time: Time,
       // creating this fetch context and generating this response.
       val expectedEpoch = JFetchMetadata.nextEpoch(reqMetadata.epoch)
       if (session.epoch != expectedEpoch) {
-        info(s"Incremental fetch session ${session.id} expected epoch $expectedEpoch, but " +
+        IncrementalFetchContext.info(s"Incremental fetch session ${session.id} expected epoch $expectedEpoch, but " +
           s"got ${session.epoch}.  Possible duplicate request.")
         FetchResponse.of(Errors.INVALID_FETCH_SESSION_EPOCH, throttleTimeMs, session.id, new FetchSession.RESP_MAP)
       } else {
@@ -538,6 +547,9 @@ class IncrementalFetchContext(private val time: Time,
       }
     }
   }
+}
+
+object IncrementalFetchContext extends Logging {
 }
 
 case class LastUsedKey(lastUsedMs: Long, id: Int) extends Comparable[LastUsedKey] {
