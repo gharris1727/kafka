@@ -19,8 +19,13 @@ package org.apache.kafka.connect.converters;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.serialization.ShortSerializer;
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 
 public class ShortConverterTest extends NumberConverterTest<Short> {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     public Short[] samples() {
         return new Short[]{Short.MIN_VALUE, 123, Short.MAX_VALUE};

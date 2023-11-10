@@ -45,8 +45,10 @@ import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Importance;
 import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.connect.runtime.WorkerConfig;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
@@ -55,6 +57,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class SynchronizationTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     public static final Logger log = LoggerFactory.getLogger(SynchronizationTest.class);
 

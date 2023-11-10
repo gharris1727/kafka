@@ -82,11 +82,13 @@ import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.util.Callback;
 import org.apache.kafka.connect.util.ConnectorTaskId;
 import org.apache.kafka.connect.util.FutureCallback;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.apache.kafka.connect.util.ParameterizedTest;
 import org.apache.kafka.connect.util.SinkUtils;
 import org.apache.kafka.connect.util.TopicAdmin;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -172,6 +174,9 @@ import static org.mockito.Mockito.when;
 
 @RunWith(Parameterized.class)
 public class WorkerTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final String CONNECTOR_ID = "test-connector";
     private static final ConnectorTaskId TASK_ID = new ConnectorTaskId("job", 0);

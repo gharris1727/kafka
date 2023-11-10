@@ -26,7 +26,9 @@ import org.apache.kafka.connect.runtime.distributed.WorkerCoordinator.Connectors
 import org.apache.kafka.connect.util.ConnectUtils;
 import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.util.ConnectorTaskId;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -59,6 +61,9 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class IncrementalCooperativeAssignorTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     // Offset isn't used in most tests but is required for creating a config snapshot object,
     // so just use some arbitrary constant for that

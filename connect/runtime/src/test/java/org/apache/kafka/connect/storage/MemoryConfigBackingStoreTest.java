@@ -18,7 +18,9 @@ package org.apache.kafka.connect.storage;
 
 import org.apache.kafka.connect.runtime.TargetState;
 import org.apache.kafka.connect.util.ConnectorTaskId;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -45,6 +47,9 @@ import static org.mockito.Mockito.verify;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class MemoryConfigBackingStoreTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final List<String> CONNECTOR_IDS = Arrays.asList("connector1", "connector2");
 

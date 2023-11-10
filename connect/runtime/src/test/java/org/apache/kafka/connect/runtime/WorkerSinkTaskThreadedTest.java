@@ -42,8 +42,10 @@ import org.apache.kafka.connect.storage.HeaderConverter;
 import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.util.ConnectorTaskId;
 import org.apache.kafka.common.utils.MockTime;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.AdditionalAnswers;
@@ -85,6 +87,9 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("unchecked")
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class WorkerSinkTaskThreadedTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     // These are fixed to keep this code simpler. In this example we assume byte[] raw values
     // with mix of integer/string in Connect

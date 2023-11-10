@@ -23,12 +23,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import org.apache.kafka.common.utils.Time;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 
 /**
  * A latch that can be used to count down the number of times a connector and/or tasks have
  * been started and stopped.
  */
 public class StartAndStopLatch {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
     private final CountDownLatch startLatch;
     private final CountDownLatch stopLatch;
     private final List<StartAndStopLatch> dependents;

@@ -18,6 +18,8 @@ package org.apache.kafka.connect.runtime.errors;
 
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.List;
@@ -30,6 +32,9 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class ProcessingContextTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     @Test
     public void testReportWithSingleReporter() {

@@ -27,9 +27,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.apache.kafka.test.IntegrationTest;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -38,6 +40,9 @@ import static org.junit.Assert.assertTrue;
 
 @Category(IntegrationTest.class)
 public class StartAndStopLatchTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private Time clock;
     private StartAndStopLatch latch;

@@ -19,8 +19,13 @@ package org.apache.kafka.connect.converters;
 import org.apache.kafka.common.serialization.IntegerSerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 
 public class IntegerConverterTest extends NumberConverterTest<Integer> {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     public Integer[] samples() {
         return new Integer[]{Integer.MIN_VALUE, 1234, Integer.MAX_VALUE};

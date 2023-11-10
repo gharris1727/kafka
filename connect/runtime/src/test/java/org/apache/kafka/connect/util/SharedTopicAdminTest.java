@@ -18,6 +18,7 @@ package org.apache.kafka.connect.util;
 
 import org.apache.kafka.connect.errors.ConnectException;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -39,6 +40,9 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class SharedTopicAdminTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final Map<String, Object> EMPTY_CONFIG = Collections.emptyMap();
 

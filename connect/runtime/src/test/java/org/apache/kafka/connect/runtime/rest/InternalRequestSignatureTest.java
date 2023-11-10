@@ -20,7 +20,9 @@ package org.apache.kafka.connect.runtime.rest;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.runtime.distributed.Crypto;
 import org.apache.kafka.connect.runtime.rest.errors.BadRequestException;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.eclipse.jetty.client.api.Request;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -47,6 +49,9 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class InternalRequestSignatureTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final byte[] REQUEST_BODY =
             "[{\"config\":\"value\"},{\"config\":\"other_value\"}]".getBytes();

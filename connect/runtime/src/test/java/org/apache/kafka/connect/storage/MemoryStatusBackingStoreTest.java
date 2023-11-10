@@ -19,6 +19,8 @@ package org.apache.kafka.connect.storage;
 import org.apache.kafka.connect.runtime.ConnectorStatus;
 import org.apache.kafka.connect.runtime.TaskStatus;
 import org.apache.kafka.connect.util.ConnectorTaskId;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -27,6 +29,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
 public class MemoryStatusBackingStoreTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     @Test
     public void putAndGetConnectorStatus() {

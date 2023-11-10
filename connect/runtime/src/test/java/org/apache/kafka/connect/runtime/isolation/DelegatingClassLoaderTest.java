@@ -17,7 +17,9 @@
 package org.apache.kafka.connect.runtime.isolation;
 
 import org.apache.kafka.connect.sink.SinkConnector;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -35,6 +37,9 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class DelegatingClassLoaderTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     public PluginClassLoader parent;
     public PluginClassLoader pluginLoader;

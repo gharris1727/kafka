@@ -69,8 +69,10 @@ import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.util.Callback;
 import org.apache.kafka.connect.util.ConnectorTaskId;
 import org.apache.kafka.connect.util.FutureCallback;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -144,6 +146,9 @@ import static org.mockito.Mockito.withSettings;
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 @SuppressWarnings("unchecked")
 public class DistributedHerderTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
     private static final Map<String, String> HERDER_CONFIG = new HashMap<>();
     static {
         HERDER_CONFIG.put(DistributedConfig.STATUS_STORAGE_TOPIC_CONFIG, "status-topic");

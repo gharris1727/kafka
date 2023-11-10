@@ -19,6 +19,7 @@ package org.apache.kafka.connect.util;
 import org.apache.kafka.connect.util.LoggingContext.Scope;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +34,9 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 public class LoggingContextTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final Logger log = LoggerFactory.getLogger(LoggingContextTest.class);
 

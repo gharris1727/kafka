@@ -19,6 +19,8 @@ package org.apache.kafka.connect.runtime;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.transforms.Transformation;
 import org.apache.kafka.connect.transforms.predicates.Predicate;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -32,6 +34,9 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class TransformationStageTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private final SourceRecord initial = new SourceRecord(singletonMap("initial", 1), null, null, null, null);
     private final SourceRecord transformed = new SourceRecord(singletonMap("transformed", 2), null, null, null, null);

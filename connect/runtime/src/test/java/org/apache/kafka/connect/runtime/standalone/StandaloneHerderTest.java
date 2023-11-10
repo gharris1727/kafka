@@ -60,9 +60,11 @@ import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.util.Callback;
 import org.apache.kafka.connect.util.ConnectorTaskId;
 import org.apache.kafka.connect.util.FutureCallback;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.easymock.Capture;
 import org.easymock.EasyMock;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.powermock.api.easymock.PowerMock;
@@ -102,6 +104,9 @@ import static org.junit.Assert.fail;
 @SuppressWarnings("unchecked")
 @PrepareForTest({StandaloneHerder.class, WorkerConnector.class})
 public class StandaloneHerderTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
     private static final String CONNECTOR_NAME = "test";
     private static final String TOPICS_LIST_STR = "topic1,topic2";
     private static final String WORKER_ID = "localhost:8083";

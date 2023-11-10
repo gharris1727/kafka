@@ -17,8 +17,10 @@
 package org.apache.kafka.connect.storage;
 
 import org.apache.kafka.connect.util.Callback;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -48,6 +50,9 @@ import static org.junit.Assert.assertTrue;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class OffsetStorageWriterTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
     private static final String NAMESPACE = "namespace";
     // Connect format - any types should be accepted here
     private static final Map<String, Object> OFFSET_KEY = Collections.singletonMap("key", "key");

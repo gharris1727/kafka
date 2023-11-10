@@ -19,6 +19,8 @@ package org.apache.kafka.connect.runtime;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.connect.header.Header;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -31,6 +33,9 @@ import static org.mockito.Mockito.mock;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class InternalSinkRecordTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final String TOPIC = "test-topic";
 

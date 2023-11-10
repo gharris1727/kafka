@@ -18,13 +18,18 @@ package org.apache.kafka.connect.runtime;
 
 import org.apache.kafka.connect.runtime.AbstractStatus.State;
 import org.apache.kafka.common.utils.MockTime;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
 public class StateTrackerTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final double DELTA = 0.000001d;
 

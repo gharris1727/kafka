@@ -19,8 +19,13 @@ package org.apache.kafka.connect.converters;
 import org.apache.kafka.common.serialization.DoubleSerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 
 public class DoubleConverterTest extends NumberConverterTest<Double> {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     public Double[] samples() {
         return new Double[]{Double.MIN_VALUE, 1234.31, Double.MAX_VALUE};

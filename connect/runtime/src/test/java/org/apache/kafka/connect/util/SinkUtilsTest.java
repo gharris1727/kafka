@@ -20,6 +20,7 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorOffsets;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -34,6 +35,9 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 public class SinkUtilsTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     @Test
     public void testConsumerGroupOffsetsToConnectorOffsets() {

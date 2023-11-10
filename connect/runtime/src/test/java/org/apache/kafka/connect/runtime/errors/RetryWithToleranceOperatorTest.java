@@ -32,6 +32,8 @@ import org.apache.kafka.connect.runtime.isolation.PluginsTest.TestableWorkerConf
 import org.apache.kafka.connect.sink.SinkConnector;
 import org.apache.kafka.connect.sink.SinkTask;
 import org.apache.kafka.connect.util.ConnectorTaskId;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -81,6 +83,9 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class RetryWithToleranceOperatorTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final Map<String, String> PROPERTIES = new HashMap<String, String>() {{
             put(CommonClientConfigs.METRICS_NUM_SAMPLES_CONFIG, Objects.toString(2));

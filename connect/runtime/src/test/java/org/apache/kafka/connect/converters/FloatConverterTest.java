@@ -19,8 +19,13 @@ package org.apache.kafka.connect.converters;
 import org.apache.kafka.common.serialization.FloatSerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 
 public class FloatConverterTest extends NumberConverterTest<Float> {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     public Float[] samples() {
         return new Float[]{Float.MIN_VALUE, 1234.31f, Float.MAX_VALUE};

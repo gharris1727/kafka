@@ -55,6 +55,8 @@ import org.apache.kafka.connect.transforms.predicates.Predicate;
 import org.apache.kafka.connect.util.Callback;
 import org.apache.kafka.connect.util.ConnectorTaskId;
 import org.apache.kafka.connect.util.FutureCallback;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -97,6 +99,9 @@ import static org.mockito.Mockito.withSettings;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class AbstractHerderTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final String CONN1 = "sourceA";
     private static final ConnectorTaskId TASK0 = new ConnectorTaskId(CONN1, 0);

@@ -18,8 +18,10 @@ package org.apache.kafka.connect.runtime.rest.util;
 
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.connect.runtime.rest.RestServerConfig;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.junit.Assert;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -28,6 +30,9 @@ import java.util.Map;
 
 @SuppressWarnings("deprecation")
 public class SSLUtilsTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     @Test
     public void testGetOrDefault() {

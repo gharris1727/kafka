@@ -47,12 +47,14 @@ import org.apache.kafka.connect.source.SourceConnector;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.source.SourceTask;
 import org.apache.kafka.connect.storage.StringConverter;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.apache.kafka.connect.util.clusters.EmbeddedConnectCluster;
 import org.apache.kafka.connect.util.clusters.ConnectAssertions;
 import org.apache.kafka.connect.util.clusters.EmbeddedKafkaCluster;
 import org.apache.kafka.test.IntegrationTest;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -107,6 +109,9 @@ import static org.junit.Assert.assertTrue;
 
 @Category(IntegrationTest.class)
 public class ExactlyOnceSourceIntegrationTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final Logger log = LoggerFactory.getLogger(ExactlyOnceSourceIntegrationTest.class);
     private static final String CLUSTER_GROUP_ID = "exactly-once-source-integration-test";

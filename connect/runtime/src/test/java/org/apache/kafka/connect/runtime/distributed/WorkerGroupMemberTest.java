@@ -26,6 +26,8 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.runtime.MockConnectMetrics;
 import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.storage.ConfigBackingStore;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -47,6 +49,9 @@ import static org.mockito.Mockito.verify;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class WorkerGroupMemberTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
     @Mock
     private ConfigBackingStore configBackingStore;
 

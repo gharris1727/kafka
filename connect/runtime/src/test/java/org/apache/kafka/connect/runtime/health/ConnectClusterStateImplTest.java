@@ -19,7 +19,9 @@ package org.apache.kafka.connect.runtime.health;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.runtime.Herder;
 import org.apache.kafka.connect.util.Callback;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -41,6 +43,9 @@ import static org.mockito.Mockito.doAnswer;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class ConnectClusterStateImplTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
     protected static final String KAFKA_CLUSTER_ID = "franzwashere";
 
     @Mock

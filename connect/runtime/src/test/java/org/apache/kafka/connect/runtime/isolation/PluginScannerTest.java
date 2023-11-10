@@ -17,7 +17,9 @@
 
 package org.apache.kafka.connect.runtime.isolation;
 
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -39,6 +41,9 @@ import static org.junit.Assert.assertFalse;
 
 @RunWith(Parameterized.class)
 public class PluginScannerTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private enum ScannerType { Reflection, ServiceLoader };
 

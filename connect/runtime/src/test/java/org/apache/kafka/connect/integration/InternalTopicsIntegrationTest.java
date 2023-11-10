@@ -23,11 +23,13 @@ import java.util.Properties;
 
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.connect.runtime.distributed.DistributedConfig;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.apache.kafka.connect.util.clusters.EmbeddedConnectCluster;
 import org.apache.kafka.connect.util.clusters.WorkerHandle;
 import org.apache.kafka.test.IntegrationTest;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -40,6 +42,9 @@ import static org.junit.Assert.assertFalse;
  */
 @Category(IntegrationTest.class)
 public class InternalTopicsIntegrationTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final Logger log = LoggerFactory.getLogger(InternalTopicsIntegrationTest.class);
 

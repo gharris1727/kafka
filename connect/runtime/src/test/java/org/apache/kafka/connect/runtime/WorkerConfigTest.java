@@ -20,8 +20,10 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.admin.MockAdminClient;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.mockito.MockedStatic;
 import org.mockito.internal.stubbing.answers.CallsRealMethods;
@@ -39,6 +41,9 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
 
 public class WorkerConfigTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final String CLUSTER_ID = "cluster-id";
     private MockedStatic<WorkerConfig> workerConfigMockedStatic;

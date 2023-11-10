@@ -51,11 +51,13 @@ import org.apache.kafka.connect.test.util.ConcurrencyUtils;
 import org.apache.kafka.connect.test.util.MockitoUtils;
 import org.apache.kafka.connect.util.Callback;
 import org.apache.kafka.connect.util.ConnectorTaskId;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.apache.kafka.connect.util.ParameterizedTest;
 import org.apache.kafka.connect.util.TopicAdmin;
 import org.apache.kafka.connect.util.TopicCreationGroup;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -118,6 +120,9 @@ import static org.mockito.Mockito.when;
 
 @RunWith(Parameterized.class)
 public class ExactlyOnceWorkerSourceTaskTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
     private static final String TOPIC = "topic";
     private static final Map<String, byte[]> PARTITION = Collections.singletonMap("key", "partition".getBytes());
     private static final Map<String, ?> OFFSET = offset(12);

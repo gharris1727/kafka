@@ -50,12 +50,14 @@ import org.apache.kafka.connect.storage.StatusBackingStore;
 import org.apache.kafka.connect.storage.StringConverter;
 import org.apache.kafka.connect.test.util.ConcurrencyUtils;
 import org.apache.kafka.connect.util.ConnectorTaskId;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.apache.kafka.connect.util.ParameterizedTest;
 import org.apache.kafka.connect.util.TopicAdmin;
 import org.apache.kafka.connect.util.TopicCreationGroup;
 import org.apache.kafka.common.utils.LogCaptureAppender;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -123,6 +125,9 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings({"unchecked"})
 @RunWith(Parameterized.class)
 public class WorkerSourceTaskTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     public static final String POLL_TIMEOUT_MSG = "Timeout waiting for poll";
     @org.junit.Rule

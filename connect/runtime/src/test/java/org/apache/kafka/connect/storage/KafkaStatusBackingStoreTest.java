@@ -33,8 +33,10 @@ import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.runtime.distributed.DistributedConfig;
 import org.apache.kafka.connect.util.ConnectorTaskId;
 import org.apache.kafka.connect.util.KafkaBasedLog;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.apache.kafka.connect.util.TopicAdmin;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -66,6 +68,9 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("unchecked")
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class KafkaStatusBackingStoreTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final String STATUS_TOPIC = "status-topic";
     private static final String WORKER_ID = "localhost:8083";

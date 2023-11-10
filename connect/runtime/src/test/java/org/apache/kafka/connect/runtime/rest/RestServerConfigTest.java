@@ -18,6 +18,8 @@ package org.apache.kafka.connect.runtime.rest;
 
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.internals.BrokerSecurityConfigs;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -32,6 +34,9 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 public class RestServerConfigTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final List<String> VALID_HEADER_CONFIGS = Arrays.asList(
             "add \t Cache-Control: no-cache, no-store, must-revalidate",

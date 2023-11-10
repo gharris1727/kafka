@@ -17,7 +17,9 @@
 package org.apache.kafka.connect.runtime;
 
 import org.apache.kafka.connect.runtime.SubmittedRecords.SubmittedRecord;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -35,6 +37,9 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class SubmittedRecordsTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final Map<String, Object> PARTITION1 = Collections.singletonMap("subreddit", "apachekafka");
     private static final Map<String, Object> PARTITION2 = Collections.singletonMap("subreddit", "adifferentvalue");

@@ -19,10 +19,12 @@ package org.apache.kafka.connect.runtime;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.runtime.rest.entities.LoggerLevel;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.apache.log4j.Hierarchy;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -44,6 +46,9 @@ import static org.junit.Assert.assertThrows;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class LoggersTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final long INITIAL_TIME = 1696951712135L;
     private Time time;

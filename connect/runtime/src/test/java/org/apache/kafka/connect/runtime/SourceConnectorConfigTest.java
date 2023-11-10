@@ -18,6 +18,8 @@
 package org.apache.kafka.connect.runtime;
 
 import org.apache.kafka.common.config.ConfigException;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.HashMap;
@@ -46,6 +48,9 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 public class SourceConnectorConfigTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final String FOO_CONNECTOR = "foo-source";
     private static final String TOPIC_CREATION_GROUP_1 = "group1";

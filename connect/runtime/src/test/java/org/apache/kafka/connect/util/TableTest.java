@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.connect.util;
 
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.Map;
@@ -25,6 +26,9 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class TableTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     @Test
     public void basicOperations() {

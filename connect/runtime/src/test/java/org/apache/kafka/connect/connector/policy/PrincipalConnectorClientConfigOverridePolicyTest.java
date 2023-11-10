@@ -19,6 +19,8 @@ package org.apache.kafka.connect.connector.policy;
 
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.config.SaslConfigs;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -26,6 +28,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class PrincipalConnectorClientConfigOverridePolicyTest extends BaseConnectorClientConfigOverridePolicyTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     ConnectorClientConfigOverridePolicy principalConnectorClientConfigOverridePolicy = new PrincipalConnectorClientConfigOverridePolicy();
 

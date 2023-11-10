@@ -19,8 +19,13 @@ package org.apache.kafka.connect.converters;
 import org.apache.kafka.common.serialization.LongSerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.util.LeakTesterRule;
+import org.junit.ClassRule;
 
 public class LongConverterTest extends NumberConverterTest<Long> {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     public Long[] samples() {
         return new Long[]{Long.MIN_VALUE, 1234L, Long.MAX_VALUE};

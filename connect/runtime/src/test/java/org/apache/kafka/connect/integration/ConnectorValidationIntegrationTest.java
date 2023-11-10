@@ -20,10 +20,12 @@ import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.storage.StringConverter;
 import org.apache.kafka.connect.transforms.Filter;
 import org.apache.kafka.connect.transforms.predicates.RecordIsTombstone;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.apache.kafka.connect.util.clusters.EmbeddedConnectCluster;
 import org.apache.kafka.test.IntegrationTest;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -51,6 +53,9 @@ import static org.apache.kafka.connect.runtime.SourceConnectorConfig.TOPIC_CREAT
  */
 @Category(IntegrationTest.class)
 public class ConnectorValidationIntegrationTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private static final String WORKER_GROUP_ID = "connect-worker-group-id";
 

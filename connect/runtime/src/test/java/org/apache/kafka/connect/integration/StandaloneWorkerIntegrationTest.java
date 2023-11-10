@@ -18,10 +18,12 @@ package org.apache.kafka.connect.integration;
 
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.runtime.rest.entities.LoggerLevel;
+import org.apache.kafka.connect.util.LeakTesterRule;
 import org.apache.kafka.connect.util.clusters.EmbeddedConnectStandalone;
 import org.apache.kafka.test.IntegrationTest;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -40,6 +42,9 @@ import static org.junit.Assert.assertTrue;
 
 @Category(IntegrationTest.class)
 public class StandaloneWorkerIntegrationTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private EmbeddedConnectStandalone connect;
 

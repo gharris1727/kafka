@@ -17,6 +17,7 @@
 package org.apache.kafka.connect.util;
 
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.concurrent.CancellationException;
@@ -36,6 +37,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class ConvertingFutureCallbackTest {
+
+    @ClassRule
+    public static final LeakTesterRule LEAK_TESTER = new LeakTesterRule();
 
     private ExecutorService executor;
 
