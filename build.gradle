@@ -436,6 +436,7 @@ subprojects {
       displayGranularity = 0
     }
     logTestStdout.rehydrate(delegate, owner, this)()
+    systemProperty("junit.jupiter.extensions.autodetection.enabled", true)
 
     exclude testsToExclude
 
@@ -468,6 +469,7 @@ subprojects {
     exclude testsToExclude
 
     if (shouldUseJUnit5) {
+      systemProperty("junit.jupiter.extensions.autodetection.enabled", true)
       if (project.name == 'streams') {
         useJUnitPlatform {
           includeTags "integration"
@@ -511,6 +513,7 @@ subprojects {
     exclude testsToExclude
 
     if (shouldUseJUnit5) {
+      systemProperty("junit.jupiter.extensions.autodetection.enabled", true)
       if (project.name == 'streams') {
         useJUnitPlatform {
           excludeTags "integration"
@@ -2723,6 +2726,7 @@ project(':connect:api') {
     implementation libs.jaxrsApi
 
     testImplementation libs.junitJupiter
+    testImplementation libs.mockitoCore
     testRuntimeOnly libs.slf4jlog4j
     testImplementation project(':clients').sourceSets.test.output
   }
