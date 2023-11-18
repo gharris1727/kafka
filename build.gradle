@@ -95,6 +95,8 @@ ext {
 
   userEnableTestCoverage = project.hasProperty("enableTestCoverage") ? enableTestCoverage : false
 
+  enableTestOutputStatistics = project.hasProperty("testOutputStatistics") ? enableTestOutputStatistics : true
+
   userKeepAliveModeString = project.hasProperty("keepAliveMode") ? keepAliveMode : "daemon"
   userKeepAliveMode = KeepAliveMode.values().find(m -> m.name().toLowerCase().equals(userKeepAliveModeString))
   if (userKeepAliveMode == null) {
@@ -352,6 +354,8 @@ subprojects {
 
     def logFiles = new HashMap<String, File>()
     def logStreams = new HashMap<String, FileOutputStream>()
+    def logLines = new HashMap<String, Long>()
+    def logBytes = new HashMap<String, Long>()
     beforeTest { TestDescriptor td ->
       def tid = testId(td)
       // truncate the file name if it's too long
@@ -382,7 +386,12 @@ subprojects {
         return
       }
       try {
-        logStreams.get(tid).write(toe.message.getBytes(StandardCharsets.UTF_8))
+        def bytes = toe.message.getBytes(StandardCharsets.UTF_8)
+        if (enableTestOutputStatistics) {
+          logLines.compute(tid, { t, existing -> existing == null ? 1 : existing + 1 })
+          logBytes.compute(tid, { t, existing -> existing == null ? bytes.length : existing + bytes.length })
+        }
+        logStreams.get(tid).write(bytes)
       } catch (Exception e) {
         println "ERROR: Failed to write output for test ${tid}"
         e.printStackTrace()
@@ -392,6 +401,21 @@ subprojects {
       def tid = testId(td)
       try {
         logStreams.get(tid).close()
+        if (enableTestOutputStatistics) {
+           try {
+             File outputCsv = new File("${rootDir}/build/reports/test-output.csv")
+             outputCsv.parentFile.mkdirs()
+             def lines = logLines.getOrDefault(tid, 0)
+             def bytes = logBytes.getOrDefault(tid, 0)
+             def duration = tr.getEndTime() - tr.getStartTime()
+             outputCsv.withWriterAppend{ out ->
+               out.println("\"${project.getPath()}\",\"${tid}\",\"${td.className}\",\"${td.name}\",\"${tr.resultType}\",${lines},${bytes},${duration}")
+             }
+           } catch (Exception e) {
+             println "ERROR: Unable to write test output statistics for ${tid}"
+             e.printStackTrace()
+           }
+        }
         if (tr.resultType != TestResult.ResultType.FAILURE) {
           logFiles.get(tid).delete()
         } else {
@@ -541,6 +565,12 @@ subprojects {
     cleanTest {
       delete t.reports.junitXml.outputLocation
       delete t.reports.html.outputLocation
+    }
+  }
+
+  cleanTest {
+    if (enableTestOutputStatistics) {
+      delete "$rootDir/build/reports/test-statistics.csv"
     }
   }
 
