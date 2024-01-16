@@ -27,7 +27,6 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
@@ -45,10 +44,10 @@ public class FileConfigProvider implements ConfigProvider {
     public static final String ALLOWED_PATHS_CONFIG = "allowed.paths";
     public static final String ALLOWED_PATHS_DOC = "A comma separated list of paths that this config provider is " +
             "allowed to access. If not set, all paths are allowed.";
-    private AllowedPaths allowedPaths = null;
+    private volatile AllowedPaths allowedPaths = new AllowedPaths(null);
 
     public void configure(Map<String, ?> configs) {
-        allowedPaths = AllowedPaths.configureAllowedPaths((String) configs.getOrDefault(ALLOWED_PATHS_CONFIG, null));
+        allowedPaths = new AllowedPaths((String) configs.getOrDefault(ALLOWED_PATHS_CONFIG, null));
     }
 
     /**
@@ -63,7 +62,7 @@ public class FileConfigProvider implements ConfigProvider {
             return new ConfigData(data);
         }
 
-        Path filePath = allowedPaths.getIfPathIsAllowed(Paths.get(path));
+        Path filePath = allowedPaths.parseUntrustedPath(path);
         if (filePath == null) {
             log.warn("The path {} is not allowed to be accessed", path);
             return new ConfigData(data);
@@ -100,7 +99,7 @@ public class FileConfigProvider implements ConfigProvider {
             return new ConfigData(data);
         }
 
-        Path filePath = allowedPaths.getIfPathIsAllowed(Paths.get(path));
+        Path filePath = allowedPaths.parseUntrustedPath(path);
         if (filePath == null) {
             log.warn("The path {} is not allowed to be accessed", path);
             return new ConfigData(data);
