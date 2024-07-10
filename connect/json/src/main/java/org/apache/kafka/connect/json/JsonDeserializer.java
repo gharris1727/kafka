@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.connect.json;
 
+import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.Deserializer;
 
@@ -58,7 +59,7 @@ public class JsonDeserializer implements Deserializer<JsonNode> {
         deserializationFeatures.forEach(objectMapper::enable);
         objectMapper.setNodeFactory(jsonNodeFactory);
         if (enableModules) {
-            objectMapper.findAndRegisterModules();
+            objectMapper.registerModule(new AfterburnerModule());
         }
     }
 
