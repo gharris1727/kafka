@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.connect.util.clusters;
 
+import org.apache.kafka.common.utils.MockExit;
 import org.apache.kafka.connect.cli.ConnectStandalone;
 import org.apache.kafka.connect.runtime.Connect;
 import org.apache.kafka.connect.runtime.standalone.StandaloneHerder;
@@ -64,15 +65,15 @@ public class EmbeddedConnectStandalone extends EmbeddedConnect {
     private volatile WorkerHandle connectWorker;
 
     private EmbeddedConnectStandalone(
+            MockExit exit,
             int numBrokers,
             Properties brokerProps,
-            boolean maskExitProcedures,
             Map<String, String> clientProps,
             Map<String, String> workerProps,
             List<Map<String, String>> connectorConfigs,
             String offsetsFile
     ) {
-        super(numBrokers, brokerProps, maskExitProcedures, clientProps);
+        super(exit, numBrokers, brokerProps, clientProps);
         this.workerProps = workerProps;
         this.connectorConfigs = connectorConfigs;
         this.offsetsFile = offsetsFile;
@@ -91,7 +92,7 @@ public class EmbeddedConnectStandalone extends EmbeddedConnect {
         workerProps.putIfAbsent(VALUE_CONVERTER_CLASS_CONFIG, "org.apache.kafka.connect.storage.StringConverter");
         workerProps.putIfAbsent(PLUGIN_DISCOVERY_CONFIG, "hybrid_fail");
 
-        ConnectStandalone cli = new ConnectStandalone();
+        ConnectStandalone cli = new ConnectStandalone(exit);
         Connect<StandaloneHerder> connect = cli.startConnect(workerProps);
         connectWorker = new WorkerHandle("standalone", connect);
         cli.processExtraArgs(connect, connectorConfigFiles());
@@ -154,9 +155,9 @@ public class EmbeddedConnectStandalone extends EmbeddedConnect {
 
         @Override
         protected EmbeddedConnectStandalone build(
+                MockExit exit,
                 int numBrokers,
                 Properties brokerProps,
-                boolean maskExitProcedures,
                 Map<String, String> clientProps,
                 Map<String, String> workerProps
         ) {
@@ -164,9 +165,9 @@ public class EmbeddedConnectStandalone extends EmbeddedConnect {
                 offsetsFile = tempOffsetsFile();
 
             return new EmbeddedConnectStandalone(
+                    exit,
                     numBrokers,
                     brokerProps,
-                    maskExitProcedures,
                     clientProps,
                     workerProps,
                     connectorConfigs,

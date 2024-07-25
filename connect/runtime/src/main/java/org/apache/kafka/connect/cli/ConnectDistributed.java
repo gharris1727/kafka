@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.connect.cli;
 
+import org.apache.kafka.common.utils.Exit;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.json.JsonConverter;
@@ -53,8 +54,8 @@ import static org.apache.kafka.clients.CommonClientConfigs.CLIENT_ID_CONFIG;
  */
 public class ConnectDistributed extends AbstractConnectCli<DistributedHerder, DistributedConfig> {
 
-    public ConnectDistributed(String... args) {
-        super(args);
+    public ConnectDistributed(Exit exit, String... args) {
+        super(exit, args);
     }
 
     @Override
@@ -96,7 +97,7 @@ public class ConnectDistributed extends AbstractConnectCli<DistributedHerder, Di
 
         // Pass the shared admin to the distributed herder as an additional AutoCloseable object that should be closed when the
         // herder is stopped. This is easier than having to track and own the lifecycle ourselves.
-        return new DistributedHerder(config, Time.SYSTEM, worker,
+        return new DistributedHerder(config, Time.SYSTEM, exit, worker,
                 kafkaClusterId, statusBackingStore, configBackingStore,
                 restServer.advertisedUrl().toString(), restClient, connectorClientConfigOverridePolicy,
                 Collections.emptyList(), sharedAdmin);
@@ -108,7 +109,7 @@ public class ConnectDistributed extends AbstractConnectCli<DistributedHerder, Di
     }
 
     public static void main(String[] args) {
-        ConnectDistributed connectDistributed = new ConnectDistributed(args);
+        ConnectDistributed connectDistributed = new ConnectDistributed(Exit.staticContext(), args);
         connectDistributed.run();
     }
 }

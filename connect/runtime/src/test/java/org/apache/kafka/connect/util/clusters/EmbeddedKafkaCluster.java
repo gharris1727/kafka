@@ -20,7 +20,7 @@ import kafka.cluster.EndPoint;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
 import kafka.utils.CoreUtils;
-import kafka.utils.TestUtils;
+import kafka.utils.Exit;
 import kafka.zk.EmbeddedZookeeper;
 
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -51,6 +51,7 @@ import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.kafka.common.network.ListenerName;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.apache.kafka.common.utils.MockExit;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -63,6 +64,7 @@ import org.apache.kafka.storage.internals.log.CleanerConfig;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.Option;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -114,6 +116,7 @@ public class EmbeddedKafkaCluster {
     private final KafkaServer[] brokers;
     private final Properties brokerConfig;
     private final Time time = Time.SYSTEM;
+    private final MockExit exit = MockExit.disallowFatal();
     private final int[] currentBrokerPorts;
     private final String[] currentBrokerLogDirs;
     private final boolean hasListenerConfig;
@@ -185,7 +188,8 @@ public class EmbeddedKafkaCluster {
             brokerConfig.put(LOG_DIR_CONFIG, currentBrokerLogDirs[i]);
             if (!hasListenerConfig)
                 brokerConfig.put(SocketServerConfigs.LISTENERS_CONFIG, listenerName.value() + "://localhost:" + currentBrokerPorts[i]);
-            brokers[i] = TestUtils.createServer(new KafkaConfig(brokerConfig, true), time);
+            brokers[i] = new KafkaServer(new KafkaConfig(brokerConfig, true), time, new Exit(exit), Option.empty(), false);
+            brokers[i].startup();
             currentBrokerPorts[i] = brokers[i].boundPort(listenerName);
         }
 
@@ -276,6 +280,7 @@ public class EmbeddedKafkaCluster {
             log.error(msg, t);
             throw new RuntimeException(msg, t);
         }
+        exit.close();
     }
 
     private static void putIfAbsent(final Properties props, final String propertyKey, final Object propertyValue) {

@@ -22,6 +22,7 @@ import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.ConfigValue;
 import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.utils.MockExit;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.connect.errors.AlreadyExistsException;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -290,6 +291,7 @@ public class DistributedHerderTest {
     @Mock private StatusBackingStore statusBackingStore;
     @Mock private WorkerGroupMember member;
     private MockTime time;
+    private MockExit exit;
     private DistributedHerder herder;
     private MockConnectMetrics metrics;
     @Mock private Worker worker;
@@ -311,6 +313,7 @@ public class DistributedHerderTest {
     @BeforeEach
     public void setUp() throws Exception {
         time = new MockTime();
+        exit = MockExit.disallowFatal();
         metrics = new MockConnectMetrics(time);
         AutoCloseable uponShutdown = shutdownCalled::countDown;
 
@@ -318,7 +321,7 @@ public class DistributedHerderTest {
         connectProtocolVersion = CONNECT_PROTOCOL_V0;
 
         herder = mock(DistributedHerder.class, withSettings().defaultAnswer(CALLS_REAL_METHODS).useConstructor(new DistributedConfig(HERDER_CONFIG),
-                worker, WORKER_ID, KAFKA_CLUSTER_ID, statusBackingStore, configBackingStore, member, MEMBER_URL, restClient, metrics, time,
+                worker, WORKER_ID, KAFKA_CLUSTER_ID, statusBackingStore, configBackingStore, member, MEMBER_URL, restClient, metrics, time, exit,
                 noneConnectorClientConfigOverridePolicy, Collections.emptyList(), null, new AutoCloseable[]{uponShutdown}));
 
         configUpdateListener = herder.new ConfigUpdateListener();
@@ -334,6 +337,7 @@ public class DistributedHerderTest {
             herderExecutor.shutdownNow();
             herderExecutor = null;
         }
+        exit.close();
     }
 
     @Test
@@ -3555,7 +3559,7 @@ public class DistributedHerderTest {
     @Test
     public void testTaskReconfigurationRetriesWithLeaderRequestForwardingException() {
         herder = mock(DistributedHerder.class, withSettings().defaultAnswer(CALLS_REAL_METHODS).useConstructor(new DistributedConfig(HERDER_CONFIG),
-                worker, WORKER_ID, KAFKA_CLUSTER_ID, statusBackingStore, configBackingStore, member, MEMBER_URL, restClient, metrics, time,
+                worker, WORKER_ID, KAFKA_CLUSTER_ID, statusBackingStore, configBackingStore, member, MEMBER_URL, restClient, metrics, time, exit,
                 noneConnectorClientConfigOverridePolicy, Collections.emptyList(), new MockSynchronousExecutor(), new AutoCloseable[]{}));
 
         rebalanceListener = herder.new RebalanceListener(time);
@@ -4423,7 +4427,7 @@ public class DistributedHerderTest {
         Map<String, String> config = new HashMap<>(HERDER_CONFIG);
         config.put(EXACTLY_ONCE_SOURCE_SUPPORT_CONFIG, "enabled");
         return mock(DistributedHerder.class, withSettings().defaultAnswer(CALLS_REAL_METHODS).useConstructor(new DistributedConfig(config),
-                worker, WORKER_ID, KAFKA_CLUSTER_ID, statusBackingStore, configBackingStore, member, MEMBER_URL, restClient, metrics, time,
+                worker, WORKER_ID, KAFKA_CLUSTER_ID, statusBackingStore, configBackingStore, member, MEMBER_URL, restClient, metrics, time, exit,
                 noneConnectorClientConfigOverridePolicy, Collections.emptyList(), null, new AutoCloseable[0]));
     }
 

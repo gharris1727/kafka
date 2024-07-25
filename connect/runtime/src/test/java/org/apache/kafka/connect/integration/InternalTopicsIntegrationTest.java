@@ -17,6 +17,7 @@
 package org.apache.kafka.connect.integration;
 
 import org.apache.kafka.common.config.TopicConfig;
+import org.apache.kafka.common.utils.MockExit;
 import org.apache.kafka.connect.runtime.distributed.DistributedConfig;
 import org.apache.kafka.connect.util.clusters.EmbeddedConnectCluster;
 import org.apache.kafka.connect.util.clusters.WorkerHandle;
@@ -35,6 +36,7 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.ws.rs.core.Response;
 
@@ -132,8 +134,11 @@ public class InternalTopicsIntegrationTest {
         workerProps.put(DistributedConfig.STATUS_STORAGE_REPLICATION_FACTOR_CONFIG, "1");
         int numWorkers = 0;
         int numBrokers = 1;
+        AtomicReference<Integer> exitCode = new AtomicReference<>();
+        MockExit exit = MockExit.forExit((statusCode, message) -> exitCode.compareAndSet(null, statusCode));
         connect = new EmbeddedConnectCluster.Builder().name("connect-cluster-1")
                                                       .workerProps(workerProps)
+                                                      .exit(exit)
                                                       .numWorkers(numWorkers)
                                                       .numBrokers(numBrokers)
                                                       .brokerProps(brokerProps)
@@ -170,6 +175,7 @@ public class InternalTopicsIntegrationTest {
         // the status topic may have been created if timing was right, but we don't care
         log.info("Verifying the internal topics for Connect");
         connect.assertions().assertTopicsDoNotExist(configTopic(), offsetTopic());
+        exit.close();
     }
 
     @Test
@@ -185,7 +191,10 @@ public class InternalTopicsIntegrationTest {
         workerProps.put(DistributedConfig.STATUS_STORAGE_REPLICATION_FACTOR_CONFIG, "1");
         int numWorkers = 0;
         int numBrokers = 1;
+        AtomicReference<Integer> exitCode = new AtomicReference<>();
+        MockExit exit = MockExit.forExit((statusCode, message) -> exitCode.compareAndSet(null, statusCode));
         connect = new EmbeddedConnectCluster.Builder().name("connect-cluster-1")
+                                                      .exit(exit)
                                                       .workerProps(workerProps)
                                                       .numWorkers(numWorkers)
                                                       .numBrokers(numBrokers)
@@ -243,6 +252,7 @@ public class InternalTopicsIntegrationTest {
         // Try to start one worker, now using all good internal topics
         connect.addWorker();
         connect.assertions().assertAtLeastNumWorkersAreUp(1, "Worker did not start in time.");
+        exit.close();
     }
 
     @Test

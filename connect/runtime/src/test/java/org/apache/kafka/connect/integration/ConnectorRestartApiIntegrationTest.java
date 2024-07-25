@@ -101,9 +101,7 @@ public class ConnectorRestartApiIntegrationTest {
                     .name("connect-cluster")
                     .numWorkers(numWorkers)
                     .workerProps(workerProps)
-                    .brokerProps(brokerProps)
-                    // true is the default, setting here as example
-                    .maskExitProcedures(true);
+                    .brokerProps(brokerProps);
             EmbeddedConnectCluster connect = connectBuilder.build();
             // start the clusters
             connect.start();

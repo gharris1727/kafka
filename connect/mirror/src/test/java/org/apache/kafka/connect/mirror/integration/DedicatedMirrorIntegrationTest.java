@@ -20,10 +20,13 @@ import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.common.utils.MockExit;
+import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.errors.NotFoundException;
 import org.apache.kafka.connect.mirror.MirrorHeartbeatConnector;
 import org.apache.kafka.connect.mirror.MirrorMaker;
+import org.apache.kafka.connect.mirror.MirrorMakerConfig;
 import org.apache.kafka.connect.mirror.MirrorSourceConfig;
 import org.apache.kafka.connect.mirror.MirrorSourceConnector;
 import org.apache.kafka.connect.mirror.SourceAndTarget;
@@ -72,13 +75,20 @@ public class DedicatedMirrorIntegrationTest {
     private static final int TOPIC_CREATION_TIMEOUT_MS = 30_000;
     private static final int TOPIC_REPLICATION_TIMEOUT_MS = 30_000;
     private static final long MM_START_UP_TIMEOUT_MS = 120_000;
+    private MockExit exit;
     private Map<String, EmbeddedKafkaCluster> kafkaClusters;
     private Map<String, MirrorMaker> mirrorMakers;
 
     @BeforeEach
     public void setup() {
+        exit = MockExit.disallowFatal();
         kafkaClusters = new HashMap<>();
         mirrorMakers = new HashMap<>();
+    }
+
+    @AfterEach
+    public void tearDown() {
+        exit.close();
     }
 
     @AfterEach
@@ -111,7 +121,7 @@ public class DedicatedMirrorIntegrationTest {
         if (mirrorMakers.containsKey(name))
             throw new IllegalStateException("Cannot register multiple MirrorMaker nodes with the same name");
 
-        MirrorMaker result = new MirrorMaker(mmProps);
+        MirrorMaker result = new MirrorMaker(new MirrorMakerConfig(mmProps), null, Time.SYSTEM, exit);
         mirrorMakers.put(name, result);
 
         result.start();

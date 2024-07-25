@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class Connect<H extends Herder> {
     private static final Logger log = LoggerFactory.getLogger(Connect.class);
 
+    private final Exit exit;
     private final H herder;
     private Future<?> herderTask;
     private final ConnectRestServer rest;
@@ -43,8 +44,9 @@ public class Connect<H extends Herder> {
     private final AtomicBoolean shutdown = new AtomicBoolean(false);
     private final ShutdownHook shutdownHook;
 
-    public Connect(H herder, ConnectRestServer rest) {
+    public Connect(Exit exit, H herder, ConnectRestServer rest) {
         log.debug("Kafka Connect instance created");
+        this.exit = exit;
         this.herder = herder;
         this.rest = rest;
         shutdownHook = new ShutdownHook();
@@ -65,7 +67,7 @@ public class Connect<H extends Herder> {
     public void start() {
         try {
             log.info("Kafka Connect starting");
-            Exit.addShutdownHook("connect-shutdown-hook", shutdownHook);
+            exit.addShutdownRunnable("connect-shutdown-hook", shutdownHook);
 
             herder.start();
             rest.initializeResources(herder);

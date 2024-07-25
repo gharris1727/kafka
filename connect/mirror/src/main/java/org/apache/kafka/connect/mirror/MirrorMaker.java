@@ -115,6 +115,7 @@ public class MirrorMaker {
     private final ShutdownHook shutdownHook;
     private final String advertisedUrl;
     private final Time time;
+    private final Exit exit;
     private final MirrorMakerConfig config;
     private final Set<String> clusters;
     private final MirrorRestServer internalServer;
@@ -126,10 +127,12 @@ public class MirrorMaker {
      *                  aliases as defined in the config. If null or empty list,
      *                  uses all clusters in the config.
      * @param time      time source
+     * @param exit      exit procedures
      */
-    public MirrorMaker(MirrorMakerConfig config, List<String> clusters, Time time) {
+    public MirrorMaker(MirrorMakerConfig config, List<String> clusters, Time time, Exit exit) {
         log.debug("Kafka MirrorMaker instance created");
         this.time = time;
+        this.exit = exit;
         if (config.enableInternalRest()) {
             this.restClient = new RestClient(config);
             internalServer = new MirrorRestServer(config.originals(), restClient);
@@ -156,6 +159,10 @@ public class MirrorMaker {
         }
         herderPairs.forEach(this::addHerder);
         shutdownHook = new ShutdownHook();
+    }
+
+    public MirrorMaker(MirrorMakerConfig config, List<String> clusters, Time time) {
+        this(config, clusters, time, Exit.staticContext());
     }
 
     /**
@@ -185,7 +192,7 @@ public class MirrorMaker {
         }
         startLatch = new CountDownLatch(herders.size());
         stopLatch = new CountDownLatch(herders.size());
-        Exit.addShutdownHook("mirror-maker-shutdown-hook", shutdownHook);
+        exit.addShutdownRunnable("mirror-maker-shutdown-hook", shutdownHook);
         for (Herder herder : herders.values()) {
             try {
                 herder.start();
@@ -275,7 +282,7 @@ public class MirrorMaker {
         // Pass the shared admin to the distributed herder as an additional AutoCloseable object that should be closed when the
         // herder is stopped. MirrorMaker has multiple herders, and having the herder own the close responsibility is much easier than
         // tracking the various shared admin objects in this class.
-        Herder herder = new MirrorHerder(config, sourceAndTarget, distributedConfig, time, worker,
+        Herder herder = new MirrorHerder(config, sourceAndTarget, distributedConfig, time, exit, worker,
                 kafkaClusterId, statusBackingStore, configBackingStore,
                 advertisedUrl, restClient, clientConfigOverridePolicy,
                 restNamespace, sharedAdmin);
@@ -321,6 +328,7 @@ public class MirrorMaker {
     }
 
     public static void main(String[] args) {
+        Exit exit = Exit.staticContext();
         ArgumentParser parser = ArgumentParsers.newArgumentParser("connect-mirror-maker");
         parser.description("MirrorMaker 2.0 driver");
         parser.addArgument("config").type(Arguments.fileType().verifyCanRead())
@@ -333,7 +341,7 @@ public class MirrorMaker {
             ns = parser.parseArgs(args);
         } catch (ArgumentParserException e) {
             parser.handleError(e);
-            Exit.exit(-1);
+            exit.exitOrThrow(-1);
             return;
         }
         File configFile = ns.get("config");
@@ -350,14 +358,14 @@ public class MirrorMaker {
             } catch (Exception e) {
                 log.error("Failed to start MirrorMaker", e);
                 mirrorMaker.stop();
-                Exit.exit(3);
+                exit.exitOrThrow(3);
             }
 
             mirrorMaker.awaitStop();
 
         } catch (Throwable t) {
             log.error("Stopping due to error", t);
-            Exit.exit(2);
+            exit.exitOrThrow(2);
         }
     }
 

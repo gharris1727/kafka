@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.connect.util.clusters;
 
+import org.apache.kafka.common.utils.Exit;
 import org.apache.kafka.connect.cli.ConnectDistributed;
 import org.apache.kafka.connect.runtime.Connect;
 import org.apache.kafka.connect.runtime.rest.RestServer;
@@ -53,8 +54,8 @@ public class WorkerHandle {
      * @param workerProperties the worker properties
      * @return the worker's handle
      */
-    public static WorkerHandle start(String name, Map<String, String> workerProperties) {
-        return new WorkerHandle(name, new ConnectDistributed().startConnect(workerProperties));
+    public static WorkerHandle start(Exit exit, String name, Map<String, String> workerProperties) {
+        return new WorkerHandle(name, new ConnectDistributed(exit).startConnect(workerProperties));
     }
 
     /**

@@ -68,8 +68,8 @@ import static org.apache.kafka.connect.runtime.ConnectorConfig.NAME_CONFIG;
 public class ConnectStandalone extends AbstractConnectCli<StandaloneHerder, StandaloneConfig> {
     private static final Logger log = LoggerFactory.getLogger(ConnectStandalone.class);
 
-    public ConnectStandalone(String... args) {
-        super(args);
+    public ConnectStandalone(Exit exit, String... args) {
+        super(exit, args);
     }
 
     @Override
@@ -98,7 +98,7 @@ public class ConnectStandalone extends AbstractConnectCli<StandaloneHerder, Stan
         } catch (Throwable t) {
             log.error("Stopping after connector error", t);
             connect.stop();
-            Exit.exit(3);
+            exit.exitOrThrow(3);
         }
     }
 
@@ -181,7 +181,7 @@ public class ConnectStandalone extends AbstractConnectCli<StandaloneHerder, Stan
     }
 
     public static void main(String[] args) {
-        ConnectStandalone connectStandalone = new ConnectStandalone(args);
+        ConnectStandalone connectStandalone = new ConnectStandalone(Exit.staticContext(), args);
         connectStandalone.run();
     }
 }

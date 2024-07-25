@@ -35,7 +35,6 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.TopicConfig;
-import org.apache.kafka.common.utils.Exit;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Timer;
 import org.apache.kafka.common.utils.Utils;
@@ -55,7 +54,6 @@ import org.apache.kafka.connect.runtime.rest.entities.ConnectorOffset;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorOffsets;
 import org.apache.kafka.connect.util.clusters.EmbeddedConnectCluster;
 import org.apache.kafka.connect.util.clusters.EmbeddedKafkaCluster;
-import org.apache.kafka.connect.util.clusters.UngracefulShutdownException;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -130,7 +128,6 @@ public class MirrorConnectorsIntegrationBaseTest {
             MirrorCheckpointConnector.class,
             MirrorHeartbeatConnector.class);
 
-    private volatile boolean shuttingDown;
     protected Map<String, String> mm2Props = new HashMap<>();
     protected MirrorMakerConfig mm2Config;
     protected EmbeddedConnectCluster primary;
@@ -142,9 +139,6 @@ public class MirrorConnectorsIntegrationBaseTest {
     protected Map<String, String> additionalBackupClusterClientsConfigs = new HashMap<>();
     protected boolean replicateBackupToPrimary = true;
     protected Boolean createReplicatedTopicsUpfront = false; // enable to speed up the test cases
-    protected Exit.Procedure exitProcedure;
-    private Exit.Procedure haltProcedure;
-    
     protected Properties primaryBrokerProps = new Properties();
     protected Properties backupBrokerProps = new Properties();
     protected Map<String, String> primaryWorkerProps = new HashMap<>();
@@ -158,34 +152,6 @@ public class MirrorConnectorsIntegrationBaseTest {
     }
 
     public void startClusters(Map<String, String> additionalMM2Config) throws Exception {
-        shuttingDown = false;
-        exitProcedure = (code, message) -> {
-            if (shuttingDown) {
-                // ignore this since we're shutting down Connect and Kafka and timing isn't always great
-                return;
-            }
-            if (code != 0) {
-                String exitMessage = "Abrupt service exit with code " + code + " and message " + message;
-                log.warn(exitMessage);
-                throw new UngracefulShutdownException(exitMessage);
-            }
-        };
-        haltProcedure = (code, message) -> {
-            if (shuttingDown) {
-                // ignore this since we're shutting down Connect and Kafka and timing isn't always great
-                return;
-            }
-            if (code != 0) {
-                String haltMessage = "Abrupt service halt with code " + code + " and message " + message;
-                log.warn(haltMessage);
-                throw new UngracefulShutdownException(haltMessage);
-            }
-        };
-        // Override the exit and halt procedure that Connect and Kafka will use. For these integration tests,
-        // we don't want to exit the JVM and instead simply want to fail the test
-        Exit.setExitProcedure(exitProcedure);
-        Exit.setHaltProcedure(haltProcedure);
-        
         primaryBrokerProps.put("auto.create.topics.enable", "false");
         backupBrokerProps.put("auto.create.topics.enable", "false");
 
@@ -209,7 +175,6 @@ public class MirrorConnectorsIntegrationBaseTest {
                 .numBrokers(1)
                 .brokerProps(primaryBrokerProps)
                 .workerProps(primaryWorkerProps)
-                .maskExitProcedures(false)
                 .clientProps(additionalPrimaryClusterClientsConfigs)
                 .build();
 
@@ -219,7 +184,6 @@ public class MirrorConnectorsIntegrationBaseTest {
                 .numBrokers(1)
                 .brokerProps(backupBrokerProps)
                 .workerProps(backupWorkerProps)
-                .maskExitProcedures(false)
                 .clientProps(additionalBackupClusterClientsConfigs)
                 .build();
         
@@ -265,16 +229,10 @@ public class MirrorConnectorsIntegrationBaseTest {
                 backup.deleteConnector(x);
             }
         } finally {
-            shuttingDown = true;
             try {
-                try {
-                    primary.stop();
-                } finally {
-                    backup.stop();
-                }
+                primary.stop();
             } finally {
-                Exit.resetExitProcedure();
-                Exit.resetHaltProcedure();
+                backup.stop();
             }
         }
     }

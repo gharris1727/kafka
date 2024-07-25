@@ -25,9 +25,9 @@ import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.metrics.stats.Avg;
 import org.apache.kafka.common.metrics.stats.CumulativeSum;
 import org.apache.kafka.common.metrics.stats.Max;
-import org.apache.kafka.common.utils.Exit;
 import org.apache.kafka.common.utils.ExponentialBackoff;
 import org.apache.kafka.common.utils.LogContext;
+import org.apache.kafka.common.utils.Exit;
 import org.apache.kafka.common.utils.ThreadUtils;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
@@ -166,6 +166,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
     private final AtomicLong requestSeqNum = new AtomicLong();
 
     private final Time time;
+    private final Exit exit;
     private final HerderMetrics herderMetrics;
     private final List<AutoCloseable> uponShutdown;
 
@@ -257,6 +258,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
      */
     public DistributedHerder(DistributedConfig config,
                              Time time,
+                             Exit exit,
                              Worker worker,
                              String kafkaClusterId,
                              StatusBackingStore statusBackingStore,
@@ -267,7 +269,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                              List<String> restNamespace,
                              AutoCloseable... uponShutdown) {
         this(config, worker, worker.workerId(), kafkaClusterId, statusBackingStore, configBackingStore, null, restUrl, restClient, worker.metrics(),
-                time, connectorClientConfigOverridePolicy, restNamespace, null, uponShutdown);
+                time, exit, connectorClientConfigOverridePolicy, restNamespace, null, uponShutdown);
         configBackingStore.setUpdateListener(new ConfigUpdateListener());
     }
 
@@ -283,6 +285,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                       RestClient restClient,
                       ConnectMetrics metrics,
                       Time time,
+                      Exit exit,
                       ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
                       List<String> restNamespace,
                       ExecutorService forwardRequestExecutor,
@@ -291,6 +294,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
         super(worker, workerId, kafkaClusterId, statusBackingStore, configBackingStore, connectorClientConfigOverridePolicy, time);
 
         this.time = time;
+        this.exit = exit;
         this.herderMetrics = new HerderMetrics(metrics);
         this.workerGroupId = config.getString(DistributedConfig.GROUP_ID_CONFIG);
         this.workerSyncTimeoutMs = config.getInt(DistributedConfig.WORKER_SYNC_TIMEOUT_MS_CONFIG);
@@ -395,7 +399,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
         } catch (Throwable t) {
             log.error("Uncaught exception in herder work thread, exiting: ", t);
             Utils.closeQuietly(this::stopServices, "herder services");
-            Exit.exit(1);
+            exit.exitOrThrow(1);
         }
     }
 

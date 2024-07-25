@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.connect.util.clusters;
 
+import org.apache.kafka.common.utils.MockExit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,15 +63,15 @@ public class EmbeddedConnectCluster extends EmbeddedConnect {
     private final AtomicInteger nextWorkerId = new AtomicInteger(0);
 
     private EmbeddedConnectCluster(
+            MockExit exit,
             int numBrokers,
             Properties brokerProps,
-            boolean maskExitProcedures,
             Map<String, String> clientProps,
             Map<String, String> workerProps,
             String name,
             int numWorkers
     ) {
-        super(numBrokers, brokerProps, maskExitProcedures, clientProps);
+        super(exit, numBrokers, brokerProps, clientProps);
         this.workerProps = workerProps;
         this.connectClusterName = name;
         this.connectCluster = new LinkedHashSet<>();
@@ -85,7 +86,7 @@ public class EmbeddedConnectCluster extends EmbeddedConnect {
      * @return the worker handle of the worker that was provisioned
      */
     public WorkerHandle addWorker() {
-        WorkerHandle worker = WorkerHandle.start(workerNamePrefix + nextWorkerId.getAndIncrement(), workerProps);
+        WorkerHandle worker = WorkerHandle.start(exit, workerNamePrefix + nextWorkerId.getAndIncrement(), workerProps);
         connectCluster.add(worker);
         log.info("Started worker {}", worker);
         return worker;
@@ -210,16 +211,16 @@ public class EmbeddedConnectCluster extends EmbeddedConnect {
 
         @Override
         protected EmbeddedConnectCluster build(
+                MockExit exit,
                 int numBrokers,
                 Properties brokerProps,
-                boolean maskExitProcedures,
                 Map<String, String> clientProps,
                 Map<String, String> workerProps
         ) {
             return new EmbeddedConnectCluster(
+                    exit,
                     numBrokers,
                     brokerProps,
-                    maskExitProcedures,
                     clientProps,
                     workerProps,
                     name,

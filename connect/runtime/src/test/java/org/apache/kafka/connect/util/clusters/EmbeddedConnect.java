@@ -18,7 +18,7 @@ package org.apache.kafka.connect.util.clusters;
 
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.utils.Exit;
+import org.apache.kafka.common.utils.MockExit;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
@@ -63,23 +63,23 @@ abstract class EmbeddedConnect {
 
     public static final int DEFAULT_NUM_BROKERS = 1;
 
+    protected final MockExit exit;
     protected final int numBrokers;
 
     private final EmbeddedKafkaCluster kafkaCluster;
-    private final boolean maskExitProcedures;
     private final HttpClient httpClient;
     private final ConnectAssertions assertions;
     private final ClassLoader originalClassLoader;
 
     protected EmbeddedConnect(
+            MockExit exit,
             int numBrokers,
             Properties brokerProps,
-            boolean maskExitProcedures,
             Map<String, String> clientProps
     ) {
+        this.exit = exit;
         this.numBrokers = numBrokers;
         this.kafkaCluster = new EmbeddedKafkaCluster(numBrokers, brokerProps, clientProps);
-        this.maskExitProcedures = maskExitProcedures;
         this.httpClient = new HttpClient();
         this.assertions = new ConnectAssertions(this);
         // we should keep the original class loader and set it back after connector stopped since the connector will change the class loader,
@@ -98,38 +98,12 @@ abstract class EmbeddedConnect {
      */
     public abstract void startConnect();
 
-    /**
-     * A more graceful way to handle abnormal exit of services in integration tests.
-     */
-    public Exit.Procedure exitProcedure = (code, message) -> {
-        if (code != 0) {
-            String exitMessage = "Abrupt service exit with code " + code + " and message " + message;
-            log.warn(exitMessage);
-            throw new UngracefulShutdownException(exitMessage);
-        }
-    };
-
-    /**
-     * A more graceful way to handle abnormal halt of services in integration tests.
-     */
-    public Exit.Procedure haltProcedure = (code, message) -> {
-        if (code != 0) {
-            String haltMessage = "Abrupt service halt with code " + code + " and message " + message;
-            log.warn(haltMessage);
-            throw new UngracefulShutdownException(haltMessage);
-        }
-    };
 
     /**
      * Start the Connect cluster and the embedded Kafka and Zookeeper cluster,
      * and wait for the Kafka and Connect clusters to become healthy.
      */
     public void start() {
-        if (maskExitProcedures) {
-            Exit.setExitProcedure(exitProcedure);
-            Exit.setHaltProcedure(haltProcedure);
-        }
-
         kafkaCluster.start();
 
         try {
@@ -173,17 +147,12 @@ abstract class EmbeddedConnect {
         workers().forEach(this::stopWorker);
         try {
             kafkaCluster.stop();
-        } catch (UngracefulShutdownException e) {
-            log.warn("Kafka did not shutdown gracefully");
         } catch (Exception e) {
             log.error("Could not stop kafka", e);
             throw new RuntimeException("Could not stop brokers", e);
         } finally {
-            if (maskExitProcedures) {
-                Exit.resetExitProcedure();
-                Exit.resetHaltProcedure();
-            }
             Plugins.compareAndSwapLoaders(originalClassLoader);
+            exit.close();
         }
     }
 
@@ -191,8 +160,6 @@ abstract class EmbeddedConnect {
         try {
             log.info("Stopping worker {}", worker);
             worker.stop();
-        } catch (UngracefulShutdownException e) {
-            log.warn("Worker {} did not shutdown gracefully", worker);
         } catch (Exception e) {
             log.error("Could not stop connect", e);
             throw new RuntimeException("Could not stop worker", e);

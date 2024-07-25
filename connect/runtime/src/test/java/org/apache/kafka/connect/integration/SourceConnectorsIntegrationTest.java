@@ -85,8 +85,7 @@ public class SourceConnectorsIntegrationTest {
                 .name("connect-cluster")
                 .numWorkers(NUM_WORKERS)
                 .workerProps(workerProps)
-                .brokerProps(brokerProps)
-                .maskExitProcedures(true); // true is the default, setting here as example
+                .brokerProps(brokerProps);
     }
 
     @AfterEach

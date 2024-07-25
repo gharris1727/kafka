@@ -16,11 +16,13 @@
  */
 package org.apache.kafka.connect.cli;
 
+import org.apache.kafka.common.utils.MockExit;
 import org.apache.kafka.connect.runtime.rest.entities.CreateConnectorRequest;
 import org.apache.kafka.test.TestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -45,12 +47,18 @@ public class ConnectStandaloneTest {
         CONNECTOR_CONFIG.put("key2", "val2");
     }
 
-    private final ConnectStandalone connectStandalone = new ConnectStandalone();
+    private final MockExit exit = MockExit.disallowFatal();
+    private final ConnectStandalone connectStandalone = new ConnectStandalone(exit);
     private File connectorConfigurationFile;
 
     @BeforeEach
     public void setUp() throws IOException {
         connectorConfigurationFile = TestUtils.tempFile();
+    }
+
+    @AfterEach
+    public void tearDown() {
+        exit.close();
     }
 
     @Test

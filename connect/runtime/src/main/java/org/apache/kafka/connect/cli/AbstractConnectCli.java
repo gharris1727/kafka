@@ -48,15 +48,17 @@ public abstract class AbstractConnectCli<H extends Herder, T extends WorkerConfi
     private static final Logger log = LoggerFactory.getLogger(AbstractConnectCli.class);
     private final String[] args;
     private final Time time = Time.SYSTEM;
+    protected final Exit exit;
 
     /**
-     *
+     * @param exit Exit procedures to use when Connect is finished executing
      * @param args the CLI arguments to be processed. Note that if one or more arguments are passed, the first argument is
      *             assumed to be the Connect worker properties file and is processed in {@link #run()}. The remaining arguments
      *             can be handled in {@link #processExtraArgs(Connect, String[])}
      */
-    protected AbstractConnectCli(String... args) {
+    protected AbstractConnectCli(Exit exit, String... args) {
         this.args = args;
+        this.exit = exit;
     }
 
     protected abstract String usage();
@@ -84,7 +86,7 @@ public abstract class AbstractConnectCli<H extends Herder, T extends WorkerConfi
     public void run() {
         if (args.length < 1 || Arrays.asList(args).contains("--help")) {
             log.info("Usage: {}", usage());
-            Exit.exit(1);
+            exit.exitOrThrow(1);
         }
 
         try {
@@ -100,7 +102,7 @@ public abstract class AbstractConnectCli<H extends Herder, T extends WorkerConfi
 
         } catch (Throwable t) {
             log.error("Stopping due to error", t);
-            Exit.exit(2);
+            exit.exitOrThrow(2);
         }
     }
 
@@ -137,14 +139,14 @@ public abstract class AbstractConnectCli<H extends Herder, T extends WorkerConfi
 
         H herder = createHerder(config, workerId, plugins, connectorClientConfigOverridePolicy, restServer, restClient);
 
-        final Connect<H> connect = new Connect<>(herder, restServer);
+        final Connect<H> connect = new Connect<>(exit, herder, restServer);
         log.info("Kafka Connect worker initialization took {}ms", time.hiResClockMs() - initStart);
         try {
             connect.start();
         } catch (Exception e) {
             log.error("Failed to start Connect", e);
             connect.stop();
-            Exit.exit(3);
+            exit.exitOrThrow(3);
         }
 
         return connect;

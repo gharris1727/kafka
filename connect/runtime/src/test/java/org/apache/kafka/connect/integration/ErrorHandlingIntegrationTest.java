@@ -33,7 +33,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,9 +69,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * and dead letter queues).
  */
 @Tag("integration")
-@Timeout(value = 600)
 public class ErrorHandlingIntegrationTest {
-    
     private static final Logger log = LoggerFactory.getLogger(ErrorHandlingIntegrationTest.class);
     private static final int NUM_WORKERS = 1;
     private static final String DLQ_TOPIC = "my-connector-errors";
